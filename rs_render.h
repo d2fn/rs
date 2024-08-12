@@ -5,13 +5,14 @@
 
 // create a new scene wraper object
 rs_scene* rs_make_scene(rs_screen* s, rs_map* m, rs_map_viewport* v, rs_player* p, u8 fps);
+void rs_scene_update(rs_scene* scene);
 // free the scene but none of its members
 void rs_free_scene(rs_scene* scene);
 // construct a new screen object with the given output size, resolution/downscaling and target frames per second
 rs_screen* rs_make_screen(u32 output_width, u32 output_height, u8 pixel_size);
 // free memory associated with a previously constructed screen
 void rs_free_screen(rs_screen* s);
-// ffrs_ty
+
 rs_map_viewport* rs_make_map_viewport(float map_x, float map_y, float span_x);
 // free memory associated with viewport
 void rs_free_map_viewport(rs_map_viewport* v);

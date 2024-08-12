@@ -7,26 +7,12 @@
 #define ATTRACTION 0.2
 #define EPSILON 0.0001
 
-typedef struct {
-    float value;
-    float vel;
-    float accel;
-    float force;
-    float mass;
-    float damping;
-    float attraction;
-    u8 targeting;
-    float target;
-    float prev;
-} rs_tween;
-
 rs_tween* rs_make_tween(float value);
 void rs_free_tween(rs_tween* t);
 void rs_tween_target(rs_tween* t, float target);
 void rs_tween_set(rs_tween* t, float value);
 void rs_tween_update(rs_tween* t);
 float rs_tween_poll(rs_tween* t);
-
 
 /*
 package com.d2fn.sumi.sketch;

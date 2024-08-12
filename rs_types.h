@@ -1,10 +1,23 @@
 #ifndef RS_TYPES
 #define RS_TYPES
 
-/*#include <cinttypes>*/
 #include <stdint.h>
+
 typedef uint32_t u32;
 typedef uint8_t u8;
+
+typedef struct {
+    float value;
+    float vel;
+    float accel;
+    float force;
+    float mass;
+    float damping;
+    float attraction;
+    u8 targeting;
+    float target;
+    float prev;
+} rs_tween;
 
 typedef struct {
 
@@ -35,8 +48,9 @@ typedef struct {
 } rs_map;
 
 typedef struct {
-    float map_x, map_y;
-    float span_x;
+    rs_tween* map_x;
+    rs_tween* map_y;
+    rs_tween* span_x;
 } rs_map_viewport;
 
 typedef struct {

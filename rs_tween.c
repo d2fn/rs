@@ -41,11 +41,11 @@ void rs_tween_update(rs_tween* t) {
 
     t->accel = t->force / t->mass;
     t->vel = (t->vel + t->accel) * t->damping;
-    t-value += t->vel;
+    t->value += t->vel;
 
     t->force = 0;
 
-    if (abs(t->value - t->prev) < EPSILON) {
+    if (fabs(t->value - t->prev) < EPSILON) {
         t->value = t->target;
         return;
     }

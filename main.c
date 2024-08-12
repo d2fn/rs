@@ -6,12 +6,15 @@
 #include "rs_map.h"
 #include "rs_player.h"
 #include "rs_render.h"
+#include "rs_tween.h"
 #include "rs_input.h"
 
 #define WIDTH          1200
 #define HEIGHT          900
 #define PIXEL_SIZE        4
-#define FPS              24
+#define FPS              60
+
+#define MAP_MOVE_AMOUNT 2.5
 
 int main(int argc, char ** argv) {
     int quit = 0;
@@ -43,10 +46,14 @@ int main(int argc, char ** argv) {
 
     while (!quit) {
 
+        rs_scene_update(scene);
+
         rs_render(scene, SDL_GetTicks());
 
         SDL_UpdateTexture(texture, NULL, rs_capture_output_buffer(s), WIDTH * sizeof(u32));
         while (SDL_PollEvent(&event) != NULL) {
+            float viewport_width = rs_tween_poll(v->span_x);
+            float pan_amount = viewport_width * 0.1;
             switch(event.type) {
                 case SDL_KEYDOWN:
                     switch(event.key.keysym.sym) {
@@ -55,16 +62,22 @@ int main(int argc, char ** argv) {
                             quit = 1;
                             break;
                         case SDLK_h:
-                            v->map_x -= 0.1f;
+                            rs_tween_target(v->map_x, rs_tween_poll(v->map_x) - pan_amount);
                             break;
                         case SDLK_l:
-                            v->map_x += 0.1f;
+                            rs_tween_target(v->map_x, rs_tween_poll(v->map_x) + pan_amount);
                             break;
                         case SDLK_j:
-                            v->map_y += 0.1f;
+                            rs_tween_target(v->map_y, rs_tween_poll(v->map_y) + pan_amount);
                             break;
                         case SDLK_k:
-                            v->map_y -= 0.1f;
+                            rs_tween_target(v->map_y, rs_tween_poll(v->map_y) - pan_amount);
+                            break;
+                        case SDLK_i:
+                            rs_tween_target(v->span_x, rs_tween_poll(v->span_x) * 0.9);
+                            break;
+                        case SDLK_o:
+                            rs_tween_target(v->span_x, rs_tween_poll(v->span_x) * 1.1);
                             break;
                     }
             }
