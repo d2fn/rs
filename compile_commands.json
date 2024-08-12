@@ -1,0 +1,20 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-Wall",
+      "-Wextra",
+      "-std=c11",
+      "--debug",
+      "-I/usr/include/SDL2",
+      "-D_REENTRANT",
+      "-c",
+      "-o",
+      "rs_render.o",
+      "rs_render.c"
+    ],
+    "directory": "/home/d/git/sdl-testing",
+    "file": "/home/d/git/sdl-testing/rs_render.c",
+    "output": "/home/d/git/sdl-testing/rs_render.o"
+  }
+]
