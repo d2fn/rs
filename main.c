@@ -11,7 +11,7 @@
 
 #define WIDTH          1200
 #define HEIGHT          900
-#define PIXEL_SIZE        4
+#define PIXEL_SIZE        1
 #define FPS              60
 
 #define MAP_MOVE_AMOUNT 2.5
@@ -35,12 +35,12 @@ int main(int argc, char ** argv) {
 
     rs_screen* s = rs_make_screen(WIDTH, HEIGHT, PIXEL_SIZE);
 
-    rs_map* m = rs_make_map(10000, 10000, 5000, 5000);
+    rs_map* m = rs_make_map(WIDTH*10, HEIGHT*10);
     rs_map_seq_fill(m); 
 
-    rs_player* p = rs_make_player(5000, 5000);
+    rs_player* p = rs_make_player(100, 100);
 
-    rs_map_viewport* v = rs_make_map_viewport(5000, 5000, 30);
+    rs_map_viewport* v = rs_make_map_viewport(m->width/2, m->height/2, 32);
 
     rs_scene* scene = rs_make_scene(s, m, v, p, FPS);
 

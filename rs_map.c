@@ -3,13 +3,11 @@
 #include <stdlib.h>
 #include <time.h>
 
-rs_map* rs_make_map(u32 width, u32 height, u32 start_player_x, u32 start_player_y) {
+rs_map* rs_make_map(u32 width, u32 height) {
     rs_map* m = malloc(sizeof(rs_map));
     m->mapdata = malloc(width * height * sizeof(u32));
     m->width = width;
     m->height = height;
-    m->start_player_x = start_player_x;
-    m->start_player_y = start_player_y;
     return m;
 }
 
