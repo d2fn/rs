@@ -8,13 +8,12 @@
 #include "rs_render.h"
 #include "rs_tween.h"
 #include "rs_input.h"
+#include "rs_types.h"
 
 #define WIDTH          1200
 #define HEIGHT          900
 #define PIXEL_SIZE        1
 #define FPS              60
-
-#define MAP_MOVE_AMOUNT 2.5
 
 int main(int argc, char ** argv) {
     int quit = 0;
@@ -38,9 +37,8 @@ int main(int argc, char ** argv) {
     rs_map* m = rs_make_map(WIDTH*10, HEIGHT*10);
     rs_map_seq_fill(m); 
 
-    rs_player* p = rs_make_player(100, 100);
-
-    rs_map_viewport* v = rs_make_map_viewport(m->width/2, m->height/2, 32);
+    rs_map_viewport* v = rs_make_map_viewport(m->width/2, m->height/2, VIEWPORT_MAX_ZOOM);
+    rs_player* p = rs_make_player(rs_tween_poll(v->map_x), rs_tween_poll(v->map_y));
 
     rs_scene* scene = rs_make_scene(s, m, v, p, FPS);
 
@@ -52,8 +50,6 @@ int main(int argc, char ** argv) {
 
         SDL_UpdateTexture(texture, NULL, rs_capture_output_buffer(s), WIDTH * sizeof(u32));
         while (SDL_PollEvent(&event) != NULL) {
-            float viewport_width = rs_tween_poll(v->span_x);
-            float pan_amount = viewport_width * 0.1;
             switch(event.type) {
                 case SDL_KEYDOWN:
                     switch(event.key.keysym.sym) {
@@ -62,22 +58,30 @@ int main(int argc, char ** argv) {
                             quit = 1;
                             break;
                         case SDLK_h:
-                            rs_tween_target(v->map_x, rs_tween_poll(v->map_x) - pan_amount);
+                            p->map_x--;
+                            if (p->map_x < 0) p->map_x = 0;
                             break;
                         case SDLK_l:
-                            rs_tween_target(v->map_x, rs_tween_poll(v->map_x) + pan_amount);
+                            p->map_x++;
+                            if (p->map_x >= m->width) p->map_x = m->width - 1;
                             break;
                         case SDLK_j:
-                            rs_tween_target(v->map_y, rs_tween_poll(v->map_y) + pan_amount);
+                            p->map_y++;
+                            if (p->map_y >= m->height) p->map_y = m->height - 1;
                             break;
                         case SDLK_k:
-                            rs_tween_target(v->map_y, rs_tween_poll(v->map_y) - pan_amount);
+                            p->map_y--;
+                            if (p->map_y < 0) p->map_y = 0;
                             break;
                         case SDLK_i:
-                            rs_tween_target(v->span_x, rs_tween_poll(v->span_x) * 0.9);
+                            if (v->zoom_level != VIEWPORT_MAX_ZOOM) {
+                                v->zoom_level++;
+                            }
                             break;
                         case SDLK_o:
-                            rs_tween_target(v->span_x, rs_tween_poll(v->span_x) * 1.1);
+                            if (v->zoom_level != 0) {
+                                v->zoom_level--;
+                            }
                             break;
                     }
             }
@@ -85,6 +89,8 @@ int main(int argc, char ** argv) {
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
+
+        rs_map_viewport_pan_to(v, m, s, p->map_x, p->map_y);
 
         poll(NULL, 0, 1000/FPS);
     }

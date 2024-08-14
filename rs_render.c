@@ -36,6 +36,7 @@ rs_scene* rs_make_scene(rs_screen* s, rs_map* m, rs_map_viewport* v, rs_player* 
 void rs_map_viewport_update(rs_map_viewport* v) {
     rs_tween_update(v->map_x);
     rs_tween_update(v->map_y);
+    rs_tween_target(v->span_x, rs_map_viewport_zoom_level[v->zoom_level]);
     rs_tween_update(v->span_x);
 }
 
@@ -66,11 +67,12 @@ void rs_free_screen(rs_screen* s) {
     free(s);
 }
 
-rs_map_viewport* rs_make_map_viewport(float map_x, float map_y, float span_x) {
+rs_map_viewport* rs_make_map_viewport(float map_x, float map_y, u8 zoom_level) {
     rs_map_viewport* v = malloc(sizeof(rs_map_viewport));
     v->map_x = rs_make_tween(map_x);
     v->map_y = rs_make_tween(map_y);
-    v->span_x = rs_make_tween(span_x);
+    v->span_x = rs_make_tween((float)rs_map_viewport_zoom_level[zoom_level]);
+    v->zoom_level = zoom_level;
     return v;
 }
 
@@ -244,8 +246,11 @@ void rs_render(rs_scene* scene, u32 millis) {
         printf("frame number: %d\n", scene->frame_num);
     }
 
+    // clear screen buffer
     memset(screen->pixels, 0, screen->num_pixels * sizeof(u32));
 
+
+    // render map at the given viewport
     rs_map* map = scene->map;
     rs_map_viewport* viewport = scene->viewport;
     float viewport_map_x = rs_tween_poll(viewport->map_x);
@@ -261,13 +266,9 @@ void rs_render(rs_scene* scene, u32 millis) {
     float num_x_cells = cell_x2 - cell_x1 + 1;
     float num_y_cells = cell_y2 - cell_y1 + 1;
 
-    printf("num_x_cells -> %.2f, num_y_cells -> %.2f\n", num_x_cells, num_y_cells);
-
     float cell_pixels = (float)screen->width / viewport_span_x;
     float pixel_width = (num_x_cells) * cell_pixels;
     float pixel_height = (num_y_cells) * cell_pixels;
-
-    printf("cell_pixels -> %.2f, pixel_width -> %.2f, pixel_height = %.2f\n", cell_pixels, pixel_width, pixel_height);
 
     float center_x = screen->width / 2.0;
     float center_y = screen->height / 2.0;
@@ -276,15 +277,12 @@ void rs_render(rs_scene* scene, u32 millis) {
     float screen_map_x2 = center_x + pixel_width / 2.0;
     float screen_map_y2 = center_y + pixel_height / 2.0;
 
-    printf("screen_map_x1 -> %.2f, screen_map_y1 -> %.2f\n", screen_map_x1, screen_map_y1);
-    printf("screen_map_x2 -> %.2f, screen_map_y2 -> %.2f\n", screen_map_x2, screen_map_y2);
-
     for (int x = 0; x < (int)screen->width; x++) {
         int x_cell = round(cell_x1 + num_x_cells * (((float)x - screen_map_x1) / (screen_map_x2 - screen_map_x1)));
-        if (x_cell >= 0 && x_cell < map->width) {
+        if (x_cell >= 0 && x_cell < (int)map->width) {
             for (int y = 0; y < (int)screen->height; y++) {
                 int y_cell = round(cell_y1 + num_y_cells * (((float)y - screen_map_y1) / (screen_map_y2 - screen_map_y1)));
-                if (y_cell >= 0 && y_cell < map->height) {
+                if (y_cell >= 0 && y_cell < (int)map->height) {
                     int i = x_cell + y_cell*map->width;
                     if (i >= 0 && i < (int)(map->width * map->height)) {
                         rs_set_pixel(screen, x, y, map->mapdata[x_cell + y_cell*map->width]);
@@ -293,4 +291,16 @@ void rs_render(rs_scene* scene, u32 millis) {
             }
         }
     }
+
+
+    const rs_player* player = scene->player;
+
+    float player_x, player_y;
+    map2screen(&player_x, &player_y, player->map_x, player->map_y, screen, viewport);
+    rs_rect(screen, player_x - 10, player_y - 10, player_x + 10, player_y + 10, rs_color_pixel(255, 255, 255, 255), 1);
+}
+
+void rs_map_viewport_pan_to(rs_map_viewport* v, rs_map* m, rs_screen* s, float map_x, float map_y) {
+    rs_tween_target(v->map_x, map_x);
+    rs_tween_target(v->map_y, map_y);
 }

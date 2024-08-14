@@ -47,18 +47,21 @@ typedef struct {
     u32  start_player_y;
 } rs_map;
 
+#define VIEWPORT_MAX_ZOOM	7
+extern const u32 rs_map_viewport_zoom_level[];
+
 typedef struct {
     rs_tween* map_x;
     rs_tween* map_y;
     rs_tween* span_x;
+    u8 zoom_level;
 } rs_map_viewport;
 
 typedef struct {
-    u32 map_x, map_y;
+    float map_x, map_y;
 } rs_player;
 
 typedef struct {
-
     rs_screen* screen;
     rs_map* map;
     rs_map_viewport* viewport;
