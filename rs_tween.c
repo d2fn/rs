@@ -56,3 +56,7 @@ void rs_tween_update(rs_tween* t) {
 float rs_tween_poll(rs_tween* t) {
     return t->value;
 }
+
+float rs_tween_poll_target(rs_tween* t) {
+    return t->target;
+}

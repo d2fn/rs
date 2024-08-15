@@ -15,7 +15,6 @@ void rs_free_screen(rs_screen* s);
 
 rs_map_viewport* rs_make_map_viewport(float map_x, float map_y, u8 zoom_level);
 
-void rs_map_viewport_pan_to(rs_map_viewport* v, rs_map* m, rs_screen* s, float map_x, float map_y);
 // free memory associated with viewport
 void rs_free_map_viewport(rs_map_viewport* v);
 // render the screen at the given tick millis

@@ -42,6 +42,10 @@ void rs_map_viewport_update(rs_map_viewport* v) {
 
 void rs_scene_update(rs_scene* scene) {
     rs_map_viewport_update(scene->viewport);
+    printf("rs_scene_update1: player_map_x -> %.2f, player_map_y = %.2f\n", rs_tween_poll(scene->player->map_x), rs_tween_poll(scene->player->map_y));
+    rs_tween_update(scene->player->map_x);
+    rs_tween_update(scene->player->map_y);
+    printf("rs_scene_update2: player_map_x -> %.2f, player_map_y = %.2f\n", rs_tween_poll(scene->player->map_x), rs_tween_poll(scene->player->map_y));
 }
 
 void rs_free_scene(rs_scene* scene) {
@@ -293,14 +297,10 @@ void rs_render(rs_scene* scene, u32 millis) {
     }
 
 
-    const rs_player* player = scene->player;
+    rs_player* player = scene->player;
 
     float player_x, player_y;
-    map2screen(&player_x, &player_y, player->map_x, player->map_y, screen, viewport);
+    map2screen(&player_x, &player_y, rs_tween_poll(player->map_x), rs_tween_poll(player->map_y), screen, viewport);
+//    printf("player_x -> %.2f, player_y = %.2f, player_map_x = %.2f, player_map_y = %.2f\n", player_x, player_y, rs_tween_poll(player->map_x), rs_tween_poll(player->map_y));
     rs_rect(screen, player_x - 10, player_y - 10, player_x + 10, player_y + 10, rs_color_pixel(255, 255, 255, 255), 1);
-}
-
-void rs_map_viewport_pan_to(rs_map_viewport* v, rs_map* m, rs_screen* s, float map_x, float map_y) {
-    rs_tween_target(v->map_x, map_x);
-    rs_tween_target(v->map_y, map_y);
 }

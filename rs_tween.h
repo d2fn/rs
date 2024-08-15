@@ -13,6 +13,7 @@ void rs_tween_target(rs_tween* t, float target);
 void rs_tween_set(rs_tween* t, float value);
 void rs_tween_update(rs_tween* t);
 float rs_tween_poll(rs_tween* t);
+float rs_tween_poll_target(rs_tween* t);
 
 /*
 package com.d2fn.sumi.sketch;

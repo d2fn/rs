@@ -58,7 +58,8 @@ typedef struct {
 } rs_map_viewport;
 
 typedef struct {
-    float map_x, map_y;
+    rs_tween* map_x;
+    rs_tween* map_y;
 } rs_player;
 
 typedef struct {
