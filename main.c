@@ -1,25 +1,39 @@
 #include <poll.h>
 #include <SDL2/SDL.h>
+#include <time.h>
+#include <string.h>
+#include <math.h>
 #include "SDL_events.h"
 #include "SDL_keycode.h"
+#include "SDL_render.h"
+#include "SDL_stdinc.h"
 #include "SDL_timer.h"
 
-#include "rs_map.h"
+#include "rs_grid.h"
 #include "rs_player.h"
 #include "rs_render.h"
+#include "rs_terrain.h"
 #include "rs_tween.h"
-#include "rs_input.h"
 #include "rs_types.h"
 
-#define WIDTH          1200
-#define HEIGHT          900
-#define PIXEL_SIZE        1
-#define FPS              60
+#define WIDTH                           1200
+#define HEIGHT                           900
+#define PIXEL_SIZE                         1
+#define FPS                              120
+#define WORLD_WIDTH               ((1<<9)+1)
+#define WORLD_HEIGHT              ((1<<9)+1)
+#define WORLD_CENTER_X      (((1<<9)+1)/2.0)
+#define WORLD_CENTER_Y      (((1<<9)+1)/2.0)
 
 struct {
-    u8 up, down, left, right;
+    u8 player_up, player_down, player_left, player_right;
+    u8 light_up, light_down, light_left, light_right, light_in, light_out;
     u8 zoom_in, zoom_out;
 } nav_state;
+
+void reset_nav() {
+    memset(&nav_state, 0, sizeof(nav_state));
+}
 
 float fclamp(float in, float lo, float hi) {
     if (in > hi) return hi;
@@ -27,29 +41,72 @@ float fclamp(float in, float lo, float hi) {
     return in;
 }
 
-int iclamp(int in, int lo, int hi) {
-    if (in > hi) return hi;
-    if (in < lo) return lo;
-    return in;
-}
-
-void move_player(rs_player* p, rs_map* map) {
-    float x_dir = (nav_state.left ? -1 : 0) + (nav_state.right ? 1 : 0);
-    float y_dir = (nav_state.up ? -1 : 0) + (nav_state.down ? 1 : 0);
-    float p_x = fclamp(rs_tween_poll_target(p->map_x) + x_dir, 0, map->width-1);
-    float p_y = fclamp(rs_tween_poll_target(p->map_y) + y_dir, 0, map->height-1);
+void move_player(rs_player* p, rs_grid* g) {
+    float x_dir = (nav_state.player_left ? -1 : 0) + (nav_state.player_right ? 1 : 0);
+    float y_dir = (nav_state.player_up ? -1 : 0) + (nav_state.player_down ? 1 : 0);
+    float p_x = fclamp(rs_tween_poll_target(p->map_x) + x_dir*10, 0, g->width-1);
+    float p_y = fclamp(rs_tween_poll_target(p->map_y) + y_dir*10, 0, g->height-1);
     rs_tween_target(p->map_x, p_x);
     rs_tween_target(p->map_y, p_y);
 }
 
-void pan_and_zoom(rs_map_viewport* v, float map_x, float map_y) {
-    rs_tween_target(v->map_x, map_x);
-    rs_tween_target(v->map_y, map_y);
-    int nav_change = (nav_state.zoom_out ? -1 : 0) + (nav_state.zoom_in ? 1 : 0);
-    v->zoom_level = (u8)iclamp((int)v->zoom_level + nav_change, 0, VIEWPORT_MAX_ZOOM);
+int move_light(rs_light* light) {
+    float x_dir = (nav_state.light_left ? -1 : 0) + (nav_state.light_right ? 1 : 0);
+    float y_dir = (nav_state.light_up ? -1 : 0) + (nav_state.light_down ? 1 : 0);
+    light->x += x_dir;
+    light->y += y_dir;
+
+
+    if (nav_state.light_in) {
+        light->z *= 0.95;
+    }
+    else if (nav_state.light_out) {
+        light->z *= 1.1;
+    }
+
+    return nav_state.light_left || nav_state.light_right || nav_state.light_up || nav_state.light_down || nav_state.light_in || nav_state.light_out;
 }
 
-int main(int argc, char ** argv) {
+void pan_and_zoom(rs_grid* world, rs_camera* camera, float point_at_x, float point_at_y) {
+    rs_tween_target(camera->point_at_x, point_at_x);
+    rs_tween_target(camera->point_at_y, point_at_y);
+    if (nav_state.zoom_in || nav_state.zoom_out) {
+        float fov = rs_tween_poll(camera->fov);
+        float new_fov = fov;
+        if (nav_state.zoom_in) new_fov *= 0.95;
+        if (nav_state.zoom_out) new_fov *= 1.15;
+        if (new_fov > world->width) new_fov = (float)world->width;
+        if (new_fov < 5) new_fov = 5.0;
+        rs_tween_target(camera->fov, new_fov);
+    }
+}
+
+void make_basic_world(rs_grid* world) {
+    float center_x = (float)world->width/2;
+    float center_y = (float)world->height/2;
+    for (u32 x = 0; x < world->width; x++) {
+        for (u32 y = 0; y < world->height; y++) {
+            float dx = (center_x - x) / 100;
+            float dy = (center_y - y) / 100;
+            float x2 = (float)(dx * dx);
+            float y2 = (float)(dy * dy);
+            /*float z = exp(-(x2+y2));*/
+            /*float z = sin((x/25.0)*(y/25.0));*/
+            float z = sin(x/5.0)*cos(y/5.0);
+            world->data[x + y * world->width] = z;
+        }
+    }
+    rs_grid_norm(world);
+}
+
+int main() {
+
+    // this seed looks nice
+    int t = 1723874298;//time(NULL);
+    srand(t);
+
+    printf("Seeded random number generator with time t = %d\n", t);
+
     int quit = 0;
     SDL_Event event;
     SDL_Init(SDL_INIT_VIDEO);
@@ -66,92 +123,101 @@ int main(int argc, char ** argv) {
             SDL_TEXTUREACCESS_STATIC,
             WIDTH, HEIGHT);
 
-    rs_screen* s = rs_make_screen(WIDTH, HEIGHT, PIXEL_SIZE);
+    rs_screen* screen = rs_make_screen(WIDTH, HEIGHT, PIXEL_SIZE);
 
-    rs_map* m = rs_make_map(WIDTH*10, HEIGHT*10);
-    rs_map_seq_fill(m); 
+    rs_grid* world = rs_make_grid(WORLD_WIDTH, WORLD_HEIGHT);
+    make_basic_world(world);
+    /*rs_grid_make_terrain(world); */
 
-    rs_map_viewport* v = rs_make_map_viewport((float)m->width/2.0, (float)m->height/2.0, VIEWPORT_MAX_ZOOM);
-    rs_player* p = rs_make_player((float)m->width/2.0, (float)m->height/2.0);
+    rs_player* player = rs_make_player((float)world->width/2.0, (float)world->height/2.0);
+    rs_camera* camera = rs_make_camera((float)world->width/2.0, (float)world->height/2.0, world->width/4.0);
+    rs_light* light = rs_make_light((float)world->width/2.5, (float)world->height/2.5, 100, 100);
 
-    rs_scene* scene = rs_make_scene(s, m, v, p, FPS);
+    rs_grid* lightmap = rs_make_grid(WORLD_WIDTH, WORLD_HEIGHT);
 
-    printf("main_setup: player_map_x -> %.2f, player_map_y = %.2f\n", rs_tween_poll(scene->player->map_x), rs_tween_poll(scene->player->map_y));
-    printf("            viewport_x -> %.2f, viewport_x = %.2f\n", rs_tween_poll(scene->viewport->map_y), rs_tween_poll(scene->viewport->map_y));
+    rs_calculate_lighting(lightmap, world, light);
 
-    nav_state.up = 0;
-    nav_state.down = 0;
-    nav_state.left = 0;
-    nav_state.right = 0;
-    nav_state.zoom_in = 0;
-    nav_state.zoom_out = 0;
+    rs_scene* scene = rs_make_scene(screen, world, camera, light, lightmap, player, FPS);
+
 
     while (!quit) {
+        u32 millis = SDL_GetTicks();
+        if ((millis - scene->last_millis) <= (1000/scene->fps)) {
+            continue;
+        }
+        scene->last_millis = millis;
+        scene->frame_num++;
+        if ((scene->frame_num % 100) == 0) {
+            printf("frame number: %d\n", scene->frame_num);
+        }
 
-        printf("main_loop: player_map_x -> %.2f, player_map_y = %.2f\n", rs_tween_poll(scene->player->map_x), rs_tween_poll(scene->player->map_y));
+        rs_update_scene(scene);
 
-        rs_scene_update(scene);
+        // clear screen buffer
+        memset(screen->buf->pixels, 0, screen->buf->num_pixels * sizeof(u32));
+        rs_camera_render_to(scene, 0, 0, WIDTH, HEIGHT);
+        /*rs_render(scene, SDL_GetTicks());*/
 
-        rs_render(scene, SDL_GetTicks());
+        SDL_UpdateTexture(texture, NULL, rs_capture_output_buffer(screen), WIDTH * sizeof(u32));
 
-        SDL_UpdateTexture(texture, NULL, rs_capture_output_buffer(s), WIDTH * sizeof(u32));
-        while (SDL_PollEvent(&event) != NULL) {
-            switch(event.type) {
-                case SDL_KEYDOWN:
-                    switch(event.key.keysym.sym) {
-                        case SDLK_ESCAPE:
-                        case SDLK_q:
-                            quit = 1;
-                            break;
-                        case SDLK_h:
-                            nav_state.left = 1;
-                            break;
-                        case SDLK_l:
-                            nav_state.right = 1;
-                            break;
-                        case SDLK_j:
-                            nav_state.down = 1;
-                            break;
-                        case SDLK_k:
-                            nav_state.up = 1;
-                            break;
-                        case SDLK_i:
-                            nav_state.zoom_in = 1;
-                            break;
-                        case SDLK_o:
-                            nav_state.zoom_out = 1;
-                            break;
-                    }
-                    break;
-                case SDL_KEYUP:
-                    switch(event.key.keysym.sym) {
-                        case SDLK_h:
-                            nav_state.left = 0;
-                            break;
-                        case SDLK_l:
-                            nav_state.right = 0;
-                            break;
-                        case SDLK_j:
-                            nav_state.down = 0;
-                            break;
-                        case SDLK_k:
-                            nav_state.up = 0;
-                            break;
-                        case SDLK_i:
-                            nav_state.zoom_in = 0;
-                            break;
-                        case SDLK_o:
-                            nav_state.zoom_out = 0;
-                            break;
-                    }
+        reset_nav();
+        const Uint8* state = SDL_GetKeyboardState(NULL);
+
+        SDL_PumpEvents();
+
+        if (state[SDL_SCANCODE_Q] || state[SDL_SCANCODE_ESCAPE]) {
+            quit = 1;
+        }
+        else if (state[SDL_SCANCODE_LSHIFT]) {
+            if (state[SDL_SCANCODE_H]) {
+                nav_state.light_left = 1;
+            }
+            if (state[SDL_SCANCODE_J]) {
+                nav_state.light_down = 1;
+            }
+            if (state[SDL_SCANCODE_K]) {
+                nav_state.light_up = 1;
+            }
+            if (state[SDL_SCANCODE_L]) {
+                nav_state.light_right = 1;
+            }
+            if (state[SDL_SCANCODE_I]) {
+                nav_state.light_in = 1;
+            }
+            if (state[SDL_SCANCODE_O]) {
+                nav_state.light_out = 1;
             }
         }
+        else {
+            if (state[SDL_SCANCODE_H]) {
+                nav_state.player_left = 1;
+            }
+            if (state[SDL_SCANCODE_J]) {
+                nav_state.player_down = 1;
+            }
+            if (state[SDL_SCANCODE_K]) {
+                nav_state.player_up = 1;
+            }
+            if (state[SDL_SCANCODE_L]) {
+                nav_state.player_right = 1;
+            }
+            if (state[SDL_SCANCODE_I]) {
+                nav_state.zoom_in = 1;
+            }
+            if (state[SDL_SCANCODE_O]) {
+                nav_state.zoom_out = 1;
+            }
+        }
+
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
 
-        pan_and_zoom(v, rs_tween_poll_target(p->map_x), rs_tween_poll_target(p->map_y));
-        move_player(p, m);
+        pan_and_zoom(world, camera, rs_tween_poll_target(player->map_x), rs_tween_poll_target(player->map_y));
+        move_player(player, world);
+        if (move_light(light)) {
+            rs_calculate_lighting(lightmap, world, light);
+        }
 
         poll(NULL, 0, 1000/FPS);
     }
@@ -162,10 +228,6 @@ int main(int argc, char ** argv) {
     SDL_DestroyRenderer(renderer);
 
     // todo -- free everything from the scene
-    rs_free_screen(s);
-    rs_free_map(m);
-    rs_free_map_viewport(v);
-    rs_free_player(p);
     rs_free_scene(scene);
 
     return 0;

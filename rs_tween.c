@@ -34,7 +34,7 @@ void rs_tween_set(rs_tween* t, float value) {
     t->value = value;
 }
 
-void rs_tween_update(rs_tween* t) {
+void rs_update_tween(rs_tween* t) {
     if (t->targeting > 0) {
         t->force += t->attraction * (t->target - t->value);
     }

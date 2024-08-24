@@ -1,10 +1,10 @@
 # Define the compiler and flags
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 --debug
+CFLAGS = -Wall -Wextra -std=c11 --debug -g
 LDFLAGS = -lm
 
 # Define the source files and output executable
-SRCS = main.c rs_render.c rs_input.c rs_map.c rs_player.c rs_tween.c rs_graphics.c rs_types.c
+SRCS = main.c rs_render.c rs_input.c rs_grid.c rs_player.c rs_tween.c rs_graphics.c rs_types.c rs_terrain.c rs_geometry.c rs_math.c
 OBJS = $(SRCS:.c=.o)
 TARGET = rs
 

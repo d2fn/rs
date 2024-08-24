@@ -6,7 +6,7 @@
 rs_player* rs_make_player(float map_x, float map_y) {
     rs_player* p = malloc(sizeof(rs_player));
     p->map_x = rs_make_tween(map_x);
-    p->map_y = rs_make_tween(map_x);
+    p->map_y = rs_make_tween(map_y);
     return p;
 }
 

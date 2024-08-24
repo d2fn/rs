@@ -2,6 +2,7 @@
 #define RS_TYPES
 
 #include <stdint.h>
+#include "rs_graphics.h"
 
 typedef uint32_t u32;
 typedef uint8_t u8;
@@ -31,17 +32,11 @@ typedef struct {
     // so our logical pixels are scaled up by this factor
     u8 pixel_size;
 
-    // describe the buffer our renderer will write to directly
-    u32 width, height;
-    // width * height
-    u32 num_pixels;
-    // pixel buffer we'll write to directly in the render
-    u32* pixels;
-    
+    rs_buffer* buf;
 } rs_screen;
 
 typedef struct {
-    u32* mapdata;
+    int* mapdata;
     u32  width, height;
     u32  start_player_x;
     u32  start_player_y;
@@ -51,11 +46,22 @@ typedef struct {
 extern const u32 rs_map_viewport_zoom_level[];
 
 typedef struct {
-    rs_tween* map_x;
-    rs_tween* map_y;
-    rs_tween* span_x;
-    u8 zoom_level;
-} rs_map_viewport;
+    rs_tween* point_at_x;
+    rs_tween* point_at_y;
+    rs_tween* fov;
+} rs_camera;
+
+typedef struct {
+    float x, y, z;
+    float intensity;
+} rs_light;
+
+typedef struct {
+    u32 width;
+    u32 height;
+    u32 size;
+    float* data;
+} rs_grid;
 
 typedef struct {
     rs_tween* map_x;
@@ -64,8 +70,10 @@ typedef struct {
 
 typedef struct {
     rs_screen* screen;
-    rs_map* map;
-    rs_map_viewport* viewport;
+    rs_grid* world;
+    rs_camera* camera;
+    rs_light* light;
+    rs_grid* lightmap;
     rs_player* player;
 
     // frames per second
@@ -76,6 +84,5 @@ typedef struct {
     // used to control frame rate
     u32 last_millis;
 } rs_scene;
-
 
 #endif
