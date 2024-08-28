@@ -3,10 +3,9 @@
 #include <math.h>
 #include <float.h>
 #include "rs_terrain.h"
-#include "rs_geometry.h"
 #include "rs_grid.h"
 #include "rs_types.h"
-#include "rs_math.h"
+#include "rs_perlin.h"
 
 float rand_range(float range) {
     return ((float)rand() / RAND_MAX) * 2 * range - range;
@@ -14,6 +13,28 @@ float rand_range(float range) {
 
 int index(int x, int y, int size) {
     return ( y * size ) + x;
+}
+
+rs_terra* rs_build_world(u32 w, u32 h) {
+
+    rs_grid* base = rs_make_grid(w, h);
+    perlin_fill(base, 50.0, 5.0, 0.5, 2.0);
+
+    rs_grid* continentalness = rs_make_grid(w, h);
+    perlin_fill(continentalness, 25.0, 2.0, 0.5, 2.0);
+
+    rs_grid* erosion = rs_make_grid(w, h);
+    perlin_fill(erosion, 10.0, 1.0, 0.5, 2.0);
+    perlin_fill(erosion, 50.0, 160.0);
+}
+
+void perlin_fill(rs_grid* g, float scale, float octaves, float persistence, float lacunarity) {
+    for (u32 y = 0; y < g->height; y++) {
+        for (u32 x = 0; x < g->width; x++) {
+            float noise = cnoise2((float)x/scale, (float)y/scale, octaves, persistence, lacunarity);
+            rs_grid_set(g, x, y, noise);
+        }
+    }
 }
 
 void diamond_square(float* map, int size, float roughness) {
@@ -95,6 +116,14 @@ void rs_calculate_lighting(rs_grid* lightmap, rs_grid* world, rs_light* light) {
         return;
     }
 
+    float z_at_light = rs_grid_get(world, round(light->x), round(light->y));
+
+    if (z_at_light >= light->z) {
+        // light is below surface, set intensity to 0 across the board
+        rs_grid_fill(lightmap, 0.0);
+        return;
+    }
+
     float min = FLT_MAX;
     float max = FLT_MIN;
 
@@ -112,6 +141,7 @@ void rs_calculate_lighting(rs_grid* lightmap, rs_grid* world, rs_light* light) {
             rs_set_griddata(lightmap, x, y, value);
             */
             float z = rs_grid_get(world, (u32)x, (u32)y);
+            /*if (z < 110) { z = 110.0; }*/
 
             float light_vec_x = (float)x - light->x;
             float light_vec_y = (float)y - light->y;
@@ -127,6 +157,13 @@ void rs_calculate_lighting(rs_grid* lightmap, rs_grid* world, rs_light* light) {
             float right_height    = (x < (int)lightmap->width - 1)  ? rs_grid_get(world, (u32)x + 1u, (u32)y     ) : z;
             float top_height      = (y > 0)                         ? rs_grid_get(world, (u32)x     , (u32)y - 1u) : z;
             float bottom_height   = (y < (int)lightmap->height - 1) ? rs_grid_get(world, (u32)x     , (u32)y + 1u) : z;
+
+            /*
+            if (left_height < 110) left_height = 110;
+            if (right_height < 110) right_height = 110;
+            if (top_height < 110) top_height = 110;
+            if (bottom_height < 110) bottom_height = 110;
+            */
 
             float norm_x = left_height - right_height;
             float norm_y = top_height - bottom_height;

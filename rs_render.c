@@ -108,7 +108,37 @@ u32* rs_capture_output_buffer(rs_screen* s) {
     return s->output_buffer;
 }
 
-void map2screen(float* screen_x, float* screen_y, float map_x, float map_y, rs_buffer* buf, rs_camera* camera) {
+void rs_screen2map(float* world_x, float* world_y, int x, int y, rs_buffer* buf, rs_camera* camera) {
+
+    float point_at_at = rs_tween_poll(camera->point_at_x);
+    float point_at_y = rs_tween_poll(camera->point_at_y);
+    float fov_x = rs_tween_poll(camera->fov);
+    float fov_y = fov_x * ((float)buf->height / (float)buf->width);
+
+    float cell_x1 = point_at_at - fov_x / 2.0;
+    float cell_x2 = point_at_at + fov_x / 2.0;
+    float cell_y1 = point_at_y - fov_y / 2.0;
+    float cell_y2 = point_at_y + fov_y / 2.0;
+
+    float num_x_cells = cell_x2 - cell_x1 + 1;
+    float num_y_cells = cell_y2 - cell_y1 + 1;
+
+    float cell_pixels = (float)buf->width / fov_x;
+    float pixel_width = (num_x_cells) * cell_pixels;
+    float pixel_height = (num_y_cells) * cell_pixels;
+
+    float center_x = buf->width / 2.0;
+    float center_y = buf->height / 2.0;
+    float screen_world_x1 = center_x - pixel_width / 2.0;
+    float screen_world_y1 = center_y - pixel_height / 2.0;
+    float screen_world_x2 = center_x + pixel_width / 2.0;
+    float screen_world_y2 = center_y + pixel_height / 2.0;
+
+    *world_x = round(cell_x1 + num_x_cells * (((float)x - screen_world_x1) / (screen_world_x2 - screen_world_x1)));
+    *world_y = round(cell_y1 + num_y_cells * (((float)y - screen_world_y1) / (screen_world_y2 - screen_world_y1)));
+}
+
+void rs_map2screen(float* screen_x, float* screen_y, float map_x, float map_y, rs_buffer* buf, rs_camera* camera) {
     float cell_size = (float)buf->width / rs_tween_poll(camera->fov);
     float center_x = (float)buf->width / 2.0;
     float center_y = (float)buf->height / 2.0;
@@ -118,46 +148,14 @@ void map2screen(float* screen_x, float* screen_y, float map_x, float map_y, rs_b
     *screen_y = center_y + (map_y - viewport_map_y) * cell_size;
 }
 
-void rs_render(rs_scene* scene, u32 millis) {
-    if ((millis - scene->last_millis) <= (1000/scene->fps)) {
-        return;
-    }
-    rs_screen* screen = scene->screen;
-    scene->last_millis = millis;
-    scene->frame_num++;
-    if ((scene->frame_num % 100) == 0) {
-        printf("frame number: %d\n", scene->frame_num);
-    }
+rs_color calc_world_color_bw(rs_grid* world, u32 x_cell, u32 y_cell, u32 frame_num) {
+    return rs_make_color(255, 255, 255, 255);
+    /*float map_val = 255 * rs_grid_get(world, x_cell, y_cell);*/
+    /*u8 brightness = (u8)((int)floor(map_val));*/
+    /*return rs_make_color(255, brightness, brightness, brightness);*/
+}
 
-    // clear screen buffer
-    memset(screen->buf->pixels, 0, screen->buf->num_pixels * sizeof(u32));
-
-    // render map at the given viewport
-    rs_grid* world = scene->world;
-    rs_camera* camera = scene->camera;
-    float viewport_map_x = rs_tween_poll(camera->point_at_x);
-    float viewport_map_y = rs_tween_poll(camera->point_at_y);
-    float viewport_span_x = rs_tween_poll(camera->fov);
-    float viewport_span_y = viewport_span_x * ((float)screen->buf->height / (float)screen->buf->width);
-
-    float cell_x1 = viewport_map_x - viewport_span_x / 2.0;
-    float cell_x2 = viewport_map_x + viewport_span_x / 2.0;
-    float cell_y1 = viewport_map_y - viewport_span_y / 2.0;
-    float cell_y2 = viewport_map_y + viewport_span_y / 2.0;
-
-    float num_x_cells = cell_x2 - cell_x1 + 1;
-    float num_y_cells = cell_y2 - cell_y1 + 1;
-
-    float cell_pixels = (float)screen->buf->width / viewport_span_x;
-    float pixel_width = (num_x_cells) * cell_pixels;
-    float pixel_height = (num_y_cells) * cell_pixels;
-
-    float center_x = screen->buf->width / 2.0;
-    float center_y = screen->buf->height / 2.0;
-    float screen_map_x1 = center_x - pixel_width / 2.0;
-    float screen_map_y1 = center_y - pixel_height / 2.0;
-    float screen_map_x2 = center_x + pixel_width / 2.0;
-    float screen_map_y2 = center_y + pixel_height / 2.0;
+rs_color calc_world_color(rs_grid* world, u32 x_cell, u32 y_cell, u32 frame_num) {
 
     u8 alpha = 255;
 
@@ -167,70 +165,33 @@ void rs_render(rs_scene* scene, u32 millis) {
     rs_color hi_land_color = rs_make_color(alpha, 200, 200, 50);
     rs_color ice_land_color = rs_make_color(alpha, 200, 200, 200);
 
-    for (int x = 0; x < (int)screen->buf->width; x++) {
-        int x_cell = round(cell_x1 + num_x_cells * (((float)x - screen_map_x1) / (screen_map_x2 - screen_map_x1)));
-        if (x_cell >= 0 && x_cell < (int)world->width) {
-            for (int y = 0; y < (int)screen->buf->height; y++) {
-                int pixel_num = screen->buf->width * y + x;
-                int y_cell = round(cell_y1 + num_y_cells * (((float)y - screen_map_y1) / (screen_map_y2 - screen_map_y1)));
-                if (y_cell >= 0 && y_cell < (int)world->height) {
-                    int i = x_cell + (y_cell * world->width);
-                    if (i >= 0 && i < (int)(world->width * world->height)) {
-                        int map_val = world->data[x_cell + y_cell*world->width];
-                        rs_color c;
-                        if (map_val <= 100) {
-                            c = rs_make_color(255, 0, 0, (u8)((pixel_num+scene->frame_num)%128));
-                        }
-                        else if(map_val <= 110) {
-                            u32 redmask = (50<<8) | 255;
-                            c = ((pixel_num + scene->frame_num) & redmask) | (255<<24);
-                        }
-                        else if(map_val <= 135) {
-                            c = lo_land_color;
-                        }
-                        else if(map_val <= 140) {
-                            c = hi_land_color;
-                        }
-                        else {
-                            c = ice_land_color;
-                        }
-                        rs_draw_pixel(screen->buf, x, y, c);
-                    }
-                }
-            }
-        }
+    u32 pixel_num = x_cell + y_cell * world->width;
+
+    float map_val = rs_grid_get(world, x_cell, y_cell);//world->data[x_cell + y_cell*world->width];
+    
+    if (map_val <= 100) {
+        return rs_make_color(255, 0, 0, (u8)((pixel_num+frame_num)%128));
     }
-
-    for(u32 x = 0; x < screen->buf->width; x += 15) {
-        for(u32 y = 0; y < screen->buf->height; y += 15) {
-            float weight = rs_remap(x * y, 0, screen->buf->width * screen->buf->height, 1, 4);
-            rs_line(screen->buf, (float)x, (float)y, x + 10, y + 10, rs_make_color(200, 100, 200, 100), weight);
-        }
+    else if(map_val <= 110) {
+        u32 redmask = (50<<8) | 255;
+        return ((pixel_num + frame_num) & redmask) | (alpha<<24);
     }
-
-    /*rs_draw_contour_lines(screen->buf, world->mapdata, (int)world->width, (int)world->height, rs_make_color(150, 255, 255, 255));*/
-
-
-    rs_player* player = scene->player;
-
-    float player_x, player_y;
-    map2screen(&player_x, &player_y, rs_tween_poll(player->map_x), rs_tween_poll(player->map_y), screen->buf, scene->camera);
-    rs_rect(screen->buf, player_x - 10, player_y - 10, player_x + 10, player_y + 10, rs_make_color(255, 255, 255, 255), 1);
+    else if(map_val <= 135) {
+        return lo_land_color;
+    }
+    else if(map_val <= 140) {
+        return hi_land_color;
+    }
+    
+    return ice_land_color;
 }
 
 rs_color calc_lit_color(rs_color c, float intensity) {
-
-    if (intensity > 0.5) {
-        // light
-        intensity = 2.0 * (intensity - 0.5);
-        u8 alpha = (u8)round(intensity * 255);
-        return rs_make_color(alpha, rs_red(c), rs_green(c), rs_blue(c));
-    }
-
-    return rs_make_color(255, 0, 0, 0);
-
-    /*float alpha = 255 - rs_remap(intensity, -1, 0.5, 0, 255);*/
-    /*return rs_make_color((u8)round(alpha), 0, 0, 255);*/
+    u8 alpha = (u8)rs_remap(intensity, 0.0, 1.0, 0.0, 255.0);
+    u8 r = rs_red(c);
+    u8 g = rs_green(c);
+    u8 b = rs_blue(c);
+    return rs_make_color(alpha, r, g, b);
 }
 
 void rs_camera_render_to(rs_scene* scene, float x, float y, float width, float height) {
@@ -284,31 +245,9 @@ void rs_camera_render_to(rs_scene* scene, float x, float y, float width, float h
                 if (y_cell >= 0 && y_cell < (int)world->height) {
                     int i = x_cell + (y_cell * world->width);
                     if (i >= 0 && i < (int)(world->width * world->height)) {
-                        float map_val = world->data[x_cell + y_cell*world->width];
-                        //rs_color c = rs_make_color(255, round(255 * map_val), round(255 * map_val), round(255 * map_val));
-                        /*rs_draw_pixel(buf, x, y, c);*/
-                        rs_draw_pixel(buf, x, y, calc_lit_color(rs_make_color(255, 255, 255, 255), light_intensity));
-                        /*
-                        rs_color c;
-                        if (map_val <= 0.1) {
-                            c = rs_make_color(255, 0, 0, (u8)((pixel_num+scene->frame_num)%128));
-                        }
-                        else if(map_val <= 0.11) {
-                            u32 redmask = (50<<8) | 255;
-                            c = ((pixel_num + scene->frame_num) & redmask) | (alpha<<24);
-                        }
-                        else if(map_val <= 0.135) {
-                            c = lo_land_color;
-                        }
-                        else if(map_val <= 0.140) {
-                            c = hi_land_color;
-                        }
-                        else {
-                            c = ice_land_color;
-                        }
+                        rs_color c = calc_world_color(world, x_cell, y_cell, scene->frame_num);
+                        c = calc_lit_color(c, light_intensity);
                         rs_draw_pixel(buf, x, y, c);
-                        rs_draw_pixel(buf, x, y, calc_light_color(light_intensity));
-                        */
                     }
                 }
             }
@@ -317,9 +256,9 @@ void rs_camera_render_to(rs_scene* scene, float x, float y, float width, float h
 
     rs_player* player = scene->player;
     float player_x, player_y;
-    map2screen(&player_x, &player_y, rs_tween_poll(player->map_x), rs_tween_poll(player->map_y), buf, camera);
-    int half_player_size = 10;
+    rs_map2screen(&player_x, &player_y, rs_tween_poll(player->map_x), rs_tween_poll(player->map_y), buf, camera);
 
+    int half_player_size = 10;
     rs_vline(buf, player_x, player_y - half_player_size, player_y + half_player_size, rs_make_color(255, 255, 0, 0));
     rs_vline(buf, player_x+1, player_y - half_player_size, player_y + half_player_size, rs_make_color(255, 255, 0, 0));
     rs_hline(buf, player_x - half_player_size, player_x + half_player_size, player_y, rs_make_color(255, 255, 0, 0));
@@ -330,8 +269,8 @@ void rs_camera_render_to(rs_scene* scene, float x, float y, float width, float h
 
     if (z_at_light <= light->z) {
         float light_x, light_y;
-        map2screen(&light_x, &light_y, light->x, light->y, buf, camera);
-        //rs_rect(buf, light_x - 10, light_y - 10, light_x + 10, light_y + 10, rs_make_color(255, 255, 255, 255), 1);
+        rs_map2screen(&light_x, &light_y, light->x, light->y, buf, camera);
+        rs_rect(buf, light_x - 10, light_y - 10, light_x + 10, light_y + 10, rs_make_color(255, 220, 220, 0), 1);
     }
 }
 

@@ -36,16 +36,6 @@ typedef struct {
 } rs_screen;
 
 typedef struct {
-    int* mapdata;
-    u32  width, height;
-    u32  start_player_x;
-    u32  start_player_y;
-} rs_map;
-
-#define VIEWPORT_MAX_ZOOM	7
-extern const u32 rs_map_viewport_zoom_level[];
-
-typedef struct {
     rs_tween* point_at_x;
     rs_tween* point_at_y;
     rs_tween* fov;
@@ -64,13 +54,19 @@ typedef struct {
 } rs_grid;
 
 typedef struct {
+    rs_grid* world;
+    rs_grid* continentalness;
+    rs_grid* erosion;
+} rs_terra;
+
+typedef struct {
     rs_tween* map_x;
     rs_tween* map_y;
 } rs_player;
 
 typedef struct {
     rs_screen* screen;
-    rs_grid* world;
+    rs_terra* world;
     rs_camera* camera;
     rs_light* light;
     rs_grid* lightmap;

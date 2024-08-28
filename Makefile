@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wextra -std=c11 --debug -g
 LDFLAGS = -lm
 
 # Define the source files and output executable
-SRCS = main.c rs_render.c rs_input.c rs_grid.c rs_player.c rs_tween.c rs_graphics.c rs_types.c rs_terrain.c rs_geometry.c rs_math.c
+SRCS = main.c rs_render.c rs_input.c rs_grid.c rs_player.c rs_tween.c rs_graphics.c rs_types.c rs_terra.c rs_geometry.c rs_math.c rs_perlin.c
 OBJS = $(SRCS:.c=.o)
 TARGET = rs
 

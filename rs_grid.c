@@ -1,7 +1,8 @@
 #include "rs_grid.h"
 #include "rs_math.h"
+#include "rs_grid.h"
+#include "rs_math.h"
 #include "rs_types.h"
-#include "rs_terrain.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -23,6 +24,13 @@ void rs_free_grid(rs_grid* g) {
     free(g);
 }
 
+
+void rs_grid_fill(rs_grid* g, float value) {
+    for (u32 i = 0; i < g->width * g->height; i++) {
+        g->data[i] = value;
+    }
+}
+
 void rs_grid_random_fill(rs_grid* g) {
     srand(time(NULL));
     for (u32 i = 0; i < g->width * g->height; i++) {
@@ -36,12 +44,7 @@ void rs_grid_seq_fill(rs_grid* g) {
     }
 }
 
-void rs_grid_make_terrain(rs_grid* g) {
-    diamond_square(g->data, g->width, 128.0f);
-    rs_grid_norm(g);
-}
-
-void rs_grid_norm(rs_grid* g) {
+void rs_grid_norm(rs_grid* g, float lo, float hi) {
     float min = FLT_MAX;
     float max = FLT_MIN;
     for (u32 i = 0; i < g->size; i++) {
@@ -50,7 +53,7 @@ void rs_grid_norm(rs_grid* g) {
         if (d < min) min = d;
     }
     for (u32 i = 0; i < g->size; i++) {
-        g->data[i] = rs_remap(g->data[i], min, max, 0.0, 1.0);
+        g->data[i] = rs_remap(g->data[i], min, max, lo, hi);
     }
 }
 

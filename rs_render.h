@@ -19,10 +19,11 @@ void rs_free_camera(rs_camera* camera);
 rs_light* rs_make_light(float x, float y, float z, float intensity);
 void rs_free_light(rs_light* light);
 
-// render the screen at the given tick millis
-void rs_render(rs_scene* scene, u32 millis);
 // copy the internal pixel buffer to the output, scaling up by screen->ixel_size
 u32* rs_capture_output_buffer(rs_screen* s);
+
+void rs_screen2map(float* world_x, float* world_y, int x, int y, rs_buffer* buf, rs_camera* camera);
+void rs_map2screen(float* screen_x, float* screen_y, float map_x, float map_y, rs_buffer* buf, rs_camera* camera);
 
 
 #endif

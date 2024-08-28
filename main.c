@@ -4,15 +4,17 @@
 #include <string.h>
 #include <math.h>
 #include "SDL_events.h"
-#include "SDL_keycode.h"
+#include "SDL_mouse.h"
 #include "SDL_render.h"
+#include "SDL_scancode.h"
 #include "SDL_stdinc.h"
 #include "SDL_timer.h"
 
 #include "rs_grid.h"
+#include "rs_perlin.h"
 #include "rs_player.h"
 #include "rs_render.h"
-#include "rs_terrain.h"
+#include "rs_terra.h"
 #include "rs_tween.h"
 #include "rs_types.h"
 
@@ -53,8 +55,8 @@ void move_player(rs_player* p, rs_grid* g) {
 int move_light(rs_light* light) {
     float x_dir = (nav_state.light_left ? -1 : 0) + (nav_state.light_right ? 1 : 0);
     float y_dir = (nav_state.light_up ? -1 : 0) + (nav_state.light_down ? 1 : 0);
-    light->x += x_dir;
-    light->y += y_dir;
+    light->x += x_dir*10;
+    light->y += y_dir*10;
 
 
     if (nav_state.light_in) {
@@ -96,7 +98,20 @@ void make_basic_world(rs_grid* world) {
             world->data[x + y * world->width] = z;
         }
     }
-    rs_grid_norm(world);
+    rs_grid_norm(world, 100, 128);
+}
+
+void debug_to_console(rs_scene* scene, int mouse_x, int mouse_y) {
+    float world_x, world_y;
+    rs_screen2map(&world_x, &world_y, mouse_x, mouse_y, scene->screen->buf, scene->camera);
+    printf("************************************************\n");
+    printf("== GAME STATE                                 ==\n");
+    printf("mouse            : x=%d, y=%d\n", mouse_x, mouse_y);
+    printf("world            : x=%.4f, y=%.4f\n", world_x, world_y);
+    printf("terrain height   : %.4f\n", rs_grid_get(scene->world, (u32)round(world_x), (u32)round(world_y)));
+    printf("light intensity  : %.4f\n", rs_grid_get(scene->lightmap, (u32)round(world_x), (u32)round(world_y)));
+    printf("perlin noise test: %.6f\n", noise2(world_x, world_y));
+    printf("************************************************\n");
 }
 
 int main() {
@@ -126,15 +141,16 @@ int main() {
     rs_screen* screen = rs_make_screen(WIDTH, HEIGHT, PIXEL_SIZE);
 
     rs_grid* world = rs_make_grid(WORLD_WIDTH, WORLD_HEIGHT);
-    make_basic_world(world);
-    /*rs_grid_make_terrain(world); */
+    rs_build_world(world); 
 
-    rs_player* player = rs_make_player((float)world->width/2.0, (float)world->height/2.0);
-    rs_camera* camera = rs_make_camera((float)world->width/2.0, (float)world->height/2.0, world->width/4.0);
-    rs_light* light = rs_make_light((float)world->width/2.5, (float)world->height/2.5, 100, 100);
+    rs_player* player = rs_make_player(WORLD_CENTER_X, WORLD_CENTER_Y);
+    rs_camera* camera = rs_make_camera(WORLD_CENTER_X, WORLD_CENTER_Y, WORLD_WIDTH / 4.0);
+
+    rs_light* light = rs_make_light(WORLD_WIDTH / 4.0, WORLD_WIDTH / 4.0, 0, 100);
+    // put light 100' above the ground
+    light->z = rs_grid_get(world, light->x, light->y) + 100;
 
     rs_grid* lightmap = rs_make_grid(WORLD_WIDTH, WORLD_HEIGHT);
-
     rs_calculate_lighting(lightmap, world, light);
 
     rs_scene* scene = rs_make_scene(screen, world, camera, light, lightmap, player, FPS);
@@ -162,6 +178,18 @@ int main() {
 
         reset_nav();
         const Uint8* state = SDL_GetKeyboardState(NULL);
+
+        int mouse_down = 0;
+
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_MOUSEBUTTONDOWN) {
+                mouse_down = 1;
+                int mouse_x, mouse_y;
+                SDL_GetMouseState(&mouse_x, &mouse_y);
+                debug_to_console(scene, mouse_x, mouse_y);
+            }
+        }
 
         SDL_PumpEvents();
 
