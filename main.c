@@ -18,14 +18,14 @@
 #include "rs_tween.h"
 #include "rs_types.h"
 
-#define WIDTH                           1200
-#define HEIGHT                           900
+#define WIDTH                           1500
+#define HEIGHT                          700
 #define PIXEL_SIZE                         1
 #define FPS                              120
-#define WORLD_WIDTH               ((1<<9)+1)
-#define WORLD_HEIGHT              ((1<<9)+1)
-#define WORLD_CENTER_X      (((1<<9)+1)/2.0)
-#define WORLD_CENTER_Y      (((1<<9)+1)/2.0)
+#define WORLD_WIDTH              ((1<<11)+1)
+#define WORLD_HEIGHT             ((1<<11)+1)
+#define WORLD_CENTER_X     (((1<<11)+1)/2.0)
+#define WORLD_CENTER_Y     (((1<<11)+1)/2.0)
 
 struct {
     u8 player_up, player_down, player_left, player_right;
@@ -42,6 +42,8 @@ float fclamp(float in, float lo, float hi) {
     if (in < lo) return lo;
     return in;
 }
+
+rs_grid* to_render;
 
 void move_player(rs_player* p, rs_grid* g) {
     float x_dir = (nav_state.player_left ? -1 : 0) + (nav_state.player_right ? 1 : 0);
@@ -108,13 +110,21 @@ void debug_to_console(rs_scene* scene, int mouse_x, int mouse_y) {
     printf("== GAME STATE                                 ==\n");
     printf("mouse            : x=%d, y=%d\n", mouse_x, mouse_y);
     printf("world            : x=%.4f, y=%.4f\n", world_x, world_y);
-    printf("terrain height   : %.4f\n", rs_grid_get(scene->world, (u32)round(world_x), (u32)round(world_y)));
+    printf("terrain height   : %.4f\n", rs_grid_get(scene->world->map, (u32)round(world_x), (u32)round(world_y)));
     printf("light intensity  : %.4f\n", rs_grid_get(scene->lightmap, (u32)round(world_x), (u32)round(world_y)));
     printf("perlin noise test: %.6f\n", noise2(world_x, world_y));
     printf("************************************************\n");
 }
 
 int main() {
+
+    float fx[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    float fy[] = { 5, 5, 5, 0, 0, 0, 0, 9, 9, 4 };
+    /*printf("linterp(%.2f, ...) = %.3f\n", 6.3, linterp(6.3, fx, fy, 10));*/
+    for (float x = -0.5; x <= 12; x += 0.4) {
+        /*printf("find_index(%.2f, ...) = %d\n", x, find_index(x, fx, 8));*/
+        printf("linterp(%.2f, ...) = %.3f\n", x, linterp(x, fx, fy, 10));
+    }
 
     // this seed looks nice
     int t = 1723874298;//time(NULL);
@@ -140,20 +150,21 @@ int main() {
 
     rs_screen* screen = rs_make_screen(WIDTH, HEIGHT, PIXEL_SIZE);
 
-    rs_grid* world = rs_make_grid(WORLD_WIDTH, WORLD_HEIGHT);
-    rs_build_world(world); 
+    rs_terra* world = rs_build_world(WORLD_WIDTH, WORLD_HEIGHT);
 
     rs_player* player = rs_make_player(WORLD_CENTER_X, WORLD_CENTER_Y);
-    rs_camera* camera = rs_make_camera(WORLD_CENTER_X, WORLD_CENTER_Y, WORLD_WIDTH / 4.0);
+    rs_camera* camera = rs_make_camera(WORLD_CENTER_X, WORLD_CENTER_Y, WORLD_WIDTH);
 
-    rs_light* light = rs_make_light(WORLD_WIDTH / 4.0, WORLD_WIDTH / 4.0, 0, 100);
+    rs_light* light = rs_make_light(WORLD_WIDTH / 4.0, WORLD_WIDTH / 4.0, 300, 2000);
     // put light 100' above the ground
-    light->z = rs_grid_get(world, light->x, light->y) + 100;
+    light->z = rs_grid_get(world->map, light->x, light->y) + 100;
 
     rs_grid* lightmap = rs_make_grid(WORLD_WIDTH, WORLD_HEIGHT);
-    rs_calculate_lighting(lightmap, world, light);
+    rs_calculate_lighting(lightmap, world->map, light);
 
     rs_scene* scene = rs_make_scene(screen, world, camera, light, lightmap, player, FPS);
+
+    rs_grid* to_render = world->map;
 
 
     while (!quit) {
@@ -171,7 +182,7 @@ int main() {
 
         // clear screen buffer
         memset(screen->buf->pixels, 0, screen->buf->num_pixels * sizeof(u32));
-        rs_camera_render_to(scene, 0, 0, WIDTH, HEIGHT);
+        rs_camera_render_to(scene, to_render, 0, 0, WIDTH, HEIGHT);
         /*rs_render(scene, SDL_GetTicks());*/
 
         SDL_UpdateTexture(texture, NULL, rs_capture_output_buffer(screen), WIDTH * sizeof(u32));
@@ -188,6 +199,22 @@ int main() {
                 int mouse_x, mouse_y;
                 SDL_GetMouseState(&mouse_x, &mouse_y);
                 debug_to_console(scene, mouse_x, mouse_y);
+            }
+            else if (event.type == SDL_KEYDOWN) {
+                switch (event.key.keysym.sym) {
+                    case SDLK_0:
+                        to_render = world->map;
+                        break;
+                    case SDLK_1:
+                        to_render = world->base;
+                        break;
+                    case SDLK_2:
+                        to_render = world->continentalness;
+                        break;
+                    case SDLK_3:
+                        to_render = world->erosion;
+                        break;
+                }
             }
         }
 
@@ -241,10 +268,10 @@ int main() {
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
 
-        pan_and_zoom(world, camera, rs_tween_poll_target(player->map_x), rs_tween_poll_target(player->map_y));
-        move_player(player, world);
+        pan_and_zoom(world->map, camera, rs_tween_poll_target(player->map_x), rs_tween_poll_target(player->map_y));
+        move_player(player, world->map);
         if (move_light(light)) {
-            rs_calculate_lighting(lightmap, world, light);
+            rs_calculate_lighting(lightmap, world->map, light);
         }
 
         poll(NULL, 0, 1000/FPS);

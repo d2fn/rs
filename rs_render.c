@@ -4,6 +4,7 @@
 #include <math.h>
 
 #include "rs_grid.h"
+#include "rs_terra.h"
 #include "rs_tween.h"
 #include "rs_types.h"
 #include "rs_render.h"
@@ -11,7 +12,7 @@
 #include "rs_graphics.h"
 #include "rs_math.h"
 
-rs_scene* rs_make_scene(rs_screen* s, rs_grid* world, rs_camera* camera, rs_light* light, rs_grid* lightmap, rs_player* player, u8 fps) {
+rs_scene* rs_make_scene(rs_screen* s, rs_terra* world, rs_camera* camera, rs_light* light, rs_grid* lightmap, rs_player* player, u8 fps) {
     rs_scene* scene = malloc(sizeof(rs_scene));
     scene->screen = s;
     scene->world = world;
@@ -90,7 +91,7 @@ void rs_free_scene(rs_scene* scene) {
     rs_free_camera(scene->camera);
     rs_free_light(scene->light);
     rs_free_grid(scene->lightmap);
-    rs_free_grid(scene->world);
+    rs_free_terra(scene->world);
     rs_free_player(scene->player);
     free(scene);
 }
@@ -149,7 +150,7 @@ void rs_map2screen(float* screen_x, float* screen_y, float map_x, float map_y, r
 }
 
 rs_color calc_world_color_bw(rs_grid* world, u32 x_cell, u32 y_cell, u32 frame_num) {
-    return rs_make_color(255, 255, 255, 255);
+    /*return rs_make_color(255, 255, 255, 255);*/
     /*float map_val = 255 * rs_grid_get(world, x_cell, y_cell);*/
     /*u8 brightness = (u8)((int)floor(map_val));*/
     /*return rs_make_color(255, brightness, brightness, brightness);*/
@@ -186,18 +187,27 @@ rs_color calc_world_color(rs_grid* world, u32 x_cell, u32 y_cell, u32 frame_num)
     return ice_land_color;
 }
 
+rs_color calc_layer_color(rs_grid* g, u32 x, u32 y) {
+    float v = rs_grid_get(g, x, y);
+    u8 alpha = 0;
+    if (v > 0 && v < 255) {
+        alpha = rs_remap(v, -1, 1, 0, 255);
+    }
+    return rs_make_color(255, alpha, alpha, alpha);
+}
+
 rs_color calc_lit_color(rs_color c, float intensity) {
-    u8 alpha = (u8)rs_remap(intensity, 0.0, 1.0, 0.0, 255.0);
+    u8 alpha = (u8)rs_remap(intensity, 0.0, 1.0, 25.0, 255.0);
     u8 r = rs_red(c);
     u8 g = rs_green(c);
     u8 b = rs_blue(c);
     return rs_make_color(alpha, r, g, b);
 }
 
-void rs_camera_render_to(rs_scene* scene, float x, float y, float width, float height) {
+void rs_camera_render_to(rs_scene* scene, rs_grid* world, float x, float y, float width, float height) {
 
     rs_camera* camera = scene->camera;
-    rs_grid* world = scene->world;
+    /*rs_grid* world = scene->world->map;*/
     rs_buffer* buf = scene->screen->buf;
 
     // render map at the given viewport
@@ -245,9 +255,15 @@ void rs_camera_render_to(rs_scene* scene, float x, float y, float width, float h
                 if (y_cell >= 0 && y_cell < (int)world->height) {
                     int i = x_cell + (y_cell * world->width);
                     if (i >= 0 && i < (int)(world->width * world->height)) {
-                        rs_color c = calc_world_color(world, x_cell, y_cell, scene->frame_num);
-                        c = calc_lit_color(c, light_intensity);
-                        rs_draw_pixel(buf, x, y, c);
+                        if (world == scene->world->map) {
+                            rs_color c = calc_world_color(world, x_cell, y_cell, scene->frame_num);
+                            c = calc_lit_color(c, light_intensity);
+                            rs_draw_pixel(buf, x, y, c);
+                        }
+                        else {
+                            rs_color c = calc_layer_color(world, x_cell, y_cell);
+                            rs_draw_pixel(buf, x, y, c);
+                        }
                     }
                 }
             }

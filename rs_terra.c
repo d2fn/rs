@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <float.h>
-#include "rs_terrain.h"
+#include "rs_terra.h"
 #include "rs_grid.h"
 #include "rs_types.h"
 #include "rs_perlin.h"
@@ -15,17 +15,87 @@ int index(int x, int y, int size) {
     return ( y * size ) + x;
 }
 
+float linterp(float x, float* fx, float* fy, int len) {
+    if (x < fx[0]) return fy[0];
+    if (x > fx[len-1]) return fy[len-1];
+
+    int j = find_index(x, fx, len);
+    int i = j - 1;
+
+    if (i <= 0) return fy[0];
+    if (j >= len-1) return fy[len-1];
+
+    float r = (x - fx[i])/(fx[j] - fx[i]);
+    return fy[i] + r * (fy[j] - fy[i]);
+}
+
+int find_index(float x, float* fx, int len) {
+
+    int lo = 0;
+    int hi = len-1;
+
+    while(lo <= hi) {
+
+        int mid = lo + (hi - lo)/2;
+
+        if (x > fx[mid]) {
+            lo = mid+1;
+        }
+        else {
+            hi = mid-1;
+        }
+    }
+
+    return lo;
+}
+
 rs_terra* rs_build_world(u32 w, u32 h) {
 
     rs_grid* base = rs_make_grid(w, h);
-    perlin_fill(base, 50.0, 5.0, 0.5, 2.0);
+    perlin_fill(base, 750.0, 8.0, 0.5, 2.0);
+    rs_grid_norm(base, -0.25, 1);
 
     rs_grid* continentalness = rs_make_grid(w, h);
-    perlin_fill(continentalness, 25.0, 2.0, 0.5, 2.0);
+    perlin_fill(continentalness, 500.0, 2.0, 0.5, 2.0);
+    rs_grid_norm(continentalness, 0, 1);
+
+    float offset_fx[] = {  0.0,  0.80,   .89,   .90,   .91 };
+    float offset_fy[] = { 20.0, 25.00, 85.00, 90.00, 95.00 };
+    float offset_n = 5;
 
     rs_grid* erosion = rs_make_grid(w, h);
-    perlin_fill(erosion, 10.0, 1.0, 0.5, 2.0);
-    perlin_fill(erosion, 50.0, 160.0);
+    perlin_fill(erosion, 1000.0, 1.0, 2.0, 1.1);
+    rs_grid_norm(erosion, 0, 1);
+    float erosion_fx[] = {   0.0,  0.1,   .92,   .99 };
+    float erosion_fy[] = { 100.0, 80.0, 12.00,  5.00 };
+    float erosion_n = 4;
+
+    rs_grid* map = rs_make_grid(w, h);
+    for (u32 y = 0; y < h; y++) {
+        for (u32 x = 0; x < w; x++) {
+            float offset = linterp(rs_grid_get(continentalness, x, y), offset_fx, offset_fy, offset_n);
+            float scale = linterp(rs_grid_get(erosion, x, y), erosion_fx, erosion_fy, erosion_n);
+            rs_grid_set(map, x, y, offset + scale * rs_grid_get(base, x, y));
+        }
+    }
+
+    rs_grid_norm(map, 100, 200);
+
+    rs_terra* world = malloc(sizeof(rs_terra));
+    world->base = base;
+    world->continentalness = continentalness;
+    world->erosion = erosion;
+    world->map = map;
+ 
+    return world;
+}
+
+void rs_free_terra(rs_terra* t) {
+    rs_free_grid(t->base);
+    rs_free_grid(t->continentalness);
+    rs_free_grid(t->erosion);
+    rs_free_grid(t->map);
+    free(t);
 }
 
 void perlin_fill(rs_grid* g, float scale, float octaves, float persistence, float lacunarity) {
@@ -143,8 +213,14 @@ void rs_calculate_lighting(rs_grid* lightmap, rs_grid* world, rs_light* light) {
             float z = rs_grid_get(world, (u32)x, (u32)y);
             /*if (z < 110) { z = 110.0; }*/
 
+
+            /*
             float light_vec_x = (float)x - light->x;
             float light_vec_y = (float)y - light->y;
+            float light_vec_z = (float)z - light->z;
+            */
+            float light_vec_x = (float)x - 1;
+            float light_vec_y = (float)y - 1;
             float light_vec_z = (float)z - light->z;
 
             // normalize light vector
@@ -176,8 +252,7 @@ void rs_calculate_lighting(rs_grid* lightmap, rs_grid* world, rs_light* light) {
 
             float dot_product = light_vec_x * norm_x + light_vec_y * norm_y + light_vec_z * norm_z;
             
-            //float intensity = fmaxf(0.0f, dot_product);
-            float intensity = fabs(dot_product);
+            float intensity = fmaxf(0.0, -dot_product);
 
             rs_grid_set(lightmap, x, y, intensity);
             if (intensity < min) min = intensity;

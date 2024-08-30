@@ -54,9 +54,10 @@ typedef struct {
 } rs_grid;
 
 typedef struct {
-    rs_grid* world;
+    rs_grid* base;
     rs_grid* continentalness;
     rs_grid* erosion;
+    rs_grid* map;
 } rs_terra;
 
 typedef struct {
