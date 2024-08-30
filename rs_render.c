@@ -1,7 +1,8 @@
-#include <SDL2/SDL.h>
-#include <stdio.h>
 #include <stdint.h>
 #include <math.h>
+#include <stdlib.h>
+
+#include "raylib.h"
 
 #include "rs_grid.h"
 #include "rs_terra.h"
@@ -149,33 +150,32 @@ void rs_map2screen(float* screen_x, float* screen_y, float map_x, float map_y, r
     *screen_y = center_y + (map_y - viewport_map_y) * cell_size;
 }
 
-rs_color calc_world_color_bw(rs_grid* world, u32 x_cell, u32 y_cell, u32 frame_num) {
+Color calc_world_color_bw(rs_grid* world, u32 x_cell, u32 y_cell, u32 frame_num) {
     /*return rs_make_color(255, 255, 255, 255);*/
     /*float map_val = 255 * rs_grid_get(world, x_cell, y_cell);*/
     /*u8 brightness = (u8)((int)floor(map_val));*/
     /*return rs_make_color(255, brightness, brightness, brightness);*/
 }
 
-rs_color calc_world_color(rs_grid* world, u32 x_cell, u32 y_cell, u32 frame_num) {
+Color calc_world_color(rs_grid* world, u32 x_cell, u32 y_cell, u32 frame_num) {
 
     u8 alpha = 255;
 
-    rs_color deep_water_color = rs_make_color(alpha, 20, 50, 250);
-    rs_color shallow_water_color = rs_make_color(alpha, 20, 130, 200);
-    rs_color lo_land_color = rs_make_color(alpha, 20, 200, 130);
-    rs_color hi_land_color = rs_make_color(alpha, 200, 200, 50);
-    rs_color ice_land_color = rs_make_color(alpha, 200, 200, 200);
+    Color deep_water_color    = { 20, 50, 250, alpha };
+    Color shallow_water_color = { 20, 130, 200, alpha };
+    Color lo_land_color       = { 20, 200, 130, alpha };
+    Color hi_land_color       = { 200, 200, 50, alpha };
+    Color ice_land_color      = { 200, 200, 200, alpha };
 
     u32 pixel_num = x_cell + y_cell * world->width;
 
     float map_val = rs_grid_get(world, x_cell, y_cell);//world->data[x_cell + y_cell*world->width];
     
     if (map_val <= 100) {
-        return rs_make_color(255, 0, 0, (u8)((pixel_num+frame_num)%128));
+        return (Color) { 0, 0, (u8)((pixel_num+frame_num)%128), 255 };
     }
     else if(map_val <= 110) {
-        u32 redmask = (50<<8) | 255;
-        return ((pixel_num + frame_num) & redmask) | (alpha<<24);
+        return BLUE;
     }
     else if(map_val <= 135) {
         return lo_land_color;
@@ -187,21 +187,18 @@ rs_color calc_world_color(rs_grid* world, u32 x_cell, u32 y_cell, u32 frame_num)
     return ice_land_color;
 }
 
-rs_color calc_layer_color(rs_grid* g, u32 x, u32 y) {
+Color calc_layer_color(rs_grid* g, u32 x, u32 y) {
     float v = rs_grid_get(g, x, y);
-    u8 alpha = 0;
+    u8 c = 0;
     if (v > 0 && v < 255) {
-        alpha = rs_remap(v, -1, 1, 0, 255);
+        c = rs_remap(v, -1, 1, 0, 255);
     }
-    return rs_make_color(255, alpha, alpha, alpha);
+    return (Color) { c, c, c, 255 };
 }
 
-rs_color calc_lit_color(rs_color c, float intensity) {
-    u8 alpha = (u8)rs_remap(intensity, 0.0, 1.0, 25.0, 255.0);
-    u8 r = rs_red(c);
-    u8 g = rs_green(c);
-    u8 b = rs_blue(c);
-    return rs_make_color(alpha, r, g, b);
+Color calc_lit_color(Color c, float intensity) {
+    float brightness = rs_remap(intensity, 0.0, 1.0, -1.0, 1.0);
+    return ColorBrightness(c, brightness);
 }
 
 void rs_camera_render_to(rs_scene* scene, rs_grid* world, float x, float y, float width, float height) {
@@ -237,11 +234,11 @@ void rs_camera_render_to(rs_scene* scene, rs_grid* world, float x, float y, floa
 
     u8 alpha = 255;
 
-    rs_color deep_water_color = rs_make_color(alpha, 20, 50, 250);
-    rs_color shallow_water_color = rs_make_color(alpha, 20, 130, 200);
-    rs_color lo_land_color = rs_make_color(alpha, 20, 200, 130);
-    rs_color hi_land_color = rs_make_color(alpha, 200, 200, 50);
-    rs_color ice_land_color = rs_make_color(alpha, 200, 200, 200);
+    Color deep_water_color    = { 20, 50, 250, alpha };
+    Color shallow_water_color = { 20, 130, 200, alpha };
+    Color lo_land_color       = { 20, 200, 130, alpha };
+    Color hi_land_color       = { 200, 200, 50, alpha };
+    Color ice_land_color      = { 200, 200, 200, alpha };
 
     rs_grid* lightmap = scene->lightmap;
 
@@ -256,13 +253,13 @@ void rs_camera_render_to(rs_scene* scene, rs_grid* world, float x, float y, floa
                     int i = x_cell + (y_cell * world->width);
                     if (i >= 0 && i < (int)(world->width * world->height)) {
                         if (world == scene->world->map) {
-                            rs_color c = calc_world_color(world, x_cell, y_cell, scene->frame_num);
+                            Color c = calc_world_color(world, x_cell, y_cell, scene->frame_num);
                             c = calc_lit_color(c, light_intensity);
-                            rs_draw_pixel(buf, x, y, c);
+                            /*rs_draw_pixel(buf, x, y, c);*/
                         }
                         else {
-                            rs_color c = calc_layer_color(world, x_cell, y_cell);
-                            rs_draw_pixel(buf, x, y, c);
+                            Color c = calc_layer_color(world, x_cell, y_cell);
+                            /*rs_draw_pixel(buf, x, y, c);*/
                         }
                     }
                 }
