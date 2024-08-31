@@ -1,11 +1,15 @@
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <float.h>
-#include "rs_terra.h"
-#include "rs_grid.h"
-#include "rs_types.h"
+#include <time.h>
+#include "rs.h"
 #include "rs_perlin.h"
+
+//
+// utility functions
+//
 
 float rand_range(float range) {
     return ((float)rand() / RAND_MAX) * 2 * range - range;
@@ -13,20 +17,6 @@ float rand_range(float range) {
 
 int index(int x, int y, int size) {
     return ( y * size ) + x;
-}
-
-float linterp(float x, float* fx, float* fy, int len) {
-    if (x < fx[0]) return fy[0];
-    if (x > fx[len-1]) return fy[len-1];
-
-    int j = find_index(x, fx, len);
-    int i = j - 1;
-
-    if (i <= 0) return fy[0];
-    if (j >= len-1) return fy[len-1];
-
-    float r = (x - fx[i])/(fx[j] - fx[i]);
-    return fy[i] + r * (fy[j] - fy[i]);
 }
 
 int find_index(float x, float* fx, int len) {
@@ -49,6 +39,53 @@ int find_index(float x, float* fx, int len) {
     return lo;
 }
 
+float linterp(float x, float* fx, float* fy, int len) {
+    if (x < fx[0]) return fy[0];
+    if (x > fx[len-1]) return fy[len-1];
+
+    int j = find_index(x, fx, len);
+    int i = j - 1;
+
+    if (i <= 0) return fy[0];
+    if (j >= len-1) return fy[len-1];
+
+    float r = (x - fx[i])/(fx[j] - fx[i]);
+    return fy[i] + r * (fy[j] - fy[i]);
+}
+
+float rs_remap(float value, float input_min, float input_max, float output_min, float output_max) {
+    // Handle cases where input_max < input_min by swapping the input range
+    if (input_max < input_min) {
+        float temp = input_max;
+        input_max = input_min;
+        input_min = temp;
+    }
+
+    // Handle cases where output_max < output_min by swapping the output range
+    if (output_max < output_min) {
+        float temp = output_max;
+        output_max = output_min;
+        output_min = temp;
+    }
+
+    // Apply the standard mapping formula
+    return output_min + (value - input_min) * (output_max - output_min) / (input_max - input_min);
+}
+
+//
+// terrain functions
+//
+
+void perlin_fill(rs_grid* g, float scale, float octaves, float persistence, float lacunarity) {
+    for (u32 y = 0; y < g->height; y++) {
+        for (u32 x = 0; x < g->width; x++) {
+            float noise = cnoise2((float)x/scale, (float)y/scale, octaves, persistence, lacunarity);
+            rs_grid_set(g, x, y, noise);
+        }
+    }
+}
+
+
 rs_terra* rs_build_world(u32 w, u32 h) {
 
     rs_grid* base = rs_make_grid(w, h);
@@ -66,8 +103,8 @@ rs_terra* rs_build_world(u32 w, u32 h) {
     rs_grid* erosion = rs_make_grid(w, h);
     perlin_fill(erosion, 1000.0, 1.0, 2.0, 1.1);
     rs_grid_norm(erosion, 0, 1);
-    float erosion_fx[] = {   0.0,  0.1,   .92,   .99 };
-    float erosion_fy[] = { 100.0, 80.0, 12.00,  5.00 };
+    float erosion_fx[] = {   0.0,  0.1, 0.8,   .92,   .99 };
+    float erosion_fy[] = { 100.0, 80.0, 3.0,  2.00,   .30 };
     float erosion_n = 4;
 
     rs_grid* map = rs_make_grid(w, h);
@@ -98,13 +135,69 @@ void rs_free_terra(rs_terra* t) {
     free(t);
 }
 
-void perlin_fill(rs_grid* g, float scale, float octaves, float persistence, float lacunarity) {
-    for (u32 y = 0; y < g->height; y++) {
-        for (u32 x = 0; x < g->width; x++) {
-            float noise = cnoise2((float)x/scale, (float)y/scale, octaves, persistence, lacunarity);
-            rs_grid_set(g, x, y, noise);
-        }
+
+//
+// rs_grid functions
+//
+
+rs_grid* rs_make_grid(u32 width, u32 height) {
+    rs_grid* g = malloc(sizeof(rs_grid));
+    g->width = width;
+    g->height = height;
+    g->size = width * height;
+    g->data = malloc(g->size * sizeof(float));
+    memset(g->data, 0, g->size * sizeof(int));
+    return g;
+}
+
+void rs_free_grid(rs_grid* g) {
+    free(g->data);
+    free(g);
+}
+
+
+void rs_grid_fill(rs_grid* g, float value) {
+    for (u32 i = 0; i < g->width * g->height; i++) {
+        g->data[i] = value;
     }
+}
+
+void rs_grid_random_fill(rs_grid* g) {
+    srand(time(NULL));
+    for (u32 i = 0; i < g->width * g->height; i++) {
+        g->data[i] = rand() % 5;
+    }
+}
+
+void rs_grid_seq_fill(rs_grid* g) {
+    for (u32 i = 0; i < g->width * g->height; i++) {
+        g->data[i] = i;
+    }
+}
+
+void rs_grid_norm(rs_grid* g, float lo, float hi) {
+    float min = FLT_MAX;
+    float max = FLT_MIN;
+    for (u32 i = 0; i < g->size; i++) {
+        float d = g->data[i];
+        if (d > max) max = d;
+        if (d < min) min = d;
+    }
+    for (u32 i = 0; i < g->size; i++) {
+        g->data[i] = rs_remap(g->data[i], min, max, lo, hi);
+    }
+}
+
+float rs_grid_get(rs_grid* g, u32 x, u32 y) {
+    if (x >= g->width) return 0;
+    if (y >= g->height) return 0;
+    return g->data[x + (y * g->width)];
+}
+
+void rs_grid_set(rs_grid* g, u32 x, u32 y, float value) {
+    if (x >= g->width) return;
+    if (y >= g->height) return;
+    g->data[x + y * g->width] = value;
 }
 
 void diamond_square(float* map, int size, float roughness) {
@@ -263,75 +356,46 @@ void rs_calculate_lighting(rs_grid* lightmap, rs_grid* world, rs_light* light) {
     printf("rs_calculate_lighting: min_intensity = %.6f, max_intensity = %.6f, light->z = %.2f\n", min, max, light->z);
 }
 
-// Function to calculate the light intensity for each cell considering a point light source
-/*
-void calculateLighting(int *terrain, float *lighting, int width, int height, float lightX, float lightY, float lightZ) {
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            // Get the current height at (x, y)
-            float terrainHeight = (float)terrain[y * width + x];
-
-            // Calculate the vector from the light source to the current point on the terrain
-            float lightVectorX = x - lightX;
-            float lightVectorY = y - lightY;
-            float lightVectorZ = terrainHeight - lightZ;
-
-            // Normalize the light vector
-            float lightVectorLength = sqrtf(lightVectorX * lightVectorX + lightVectorY * lightVectorY + lightVectorZ * lightVectorZ);
-            lightVectorX /= lightVectorLength;
-            lightVectorY /= lightVectorLength;
-            lightVectorZ /= lightVectorLength;
-
-            // Approximate the surface normal at this point using the height differences with neighboring points
-            float leftHeight = (x > 0) ? (float)terrain[y * width + (x - 1)] : terrainHeight;
-            float rightHeight = (x < width - 1) ? (float)terrain[y * width + (x + 1)] : terrainHeight;
-            float topHeight = (y > 0) ? (float)terrain[(y - 1) * width + x] : terrainHeight;
-            float bottomHeight = (y < height - 1) ? (float)terrain[(y + 1) * width + x] : terrainHeight;
-
-            // Calculate the terrain normal vector using cross products
-            float normalX = leftHeight - rightHeight;
-            float normalY = topHeight - bottomHeight;
-            float normalZ = 2.0f; // Scale factor to adjust the influence of height differences
-
-            // Normalize the normal vector
-            float normalLength = sqrtf(normalX * normalX + normalY * normalY + normalZ * normalZ);
-            normalX /= normalLength;
-            normalY /= normalLength;
-            normalZ /= normalLength;
-
-            // Calculate the dot product of the light vector and the normal vector
-            float dotProduct = lightVectorX * normalX + lightVectorY * normalY + lightVectorZ * normalZ;
-
-            // The light intensity is proportional to the dot product (clamped between 0 and 1)
-            float intensity = fmaxf(0.0f, dotProduct);
-
-            // Store the calculated intensity
-            lighting[y * width + x] = intensity;
-        }
-    }
+rs_light* rs_make_light(float x, float y, float z, float intensity) {
+    rs_light* light = malloc(sizeof(rs_light));
+    light->x = x;
+    light->y = y;
+    light->z = z;
+    light->intensity = intensity;
+    return light;
 }
 
-int main() {
-    int terrain[WIDTH * HEIGHT];
-    float lighting[WIDTH * HEIGHT];
+Color calc_world_color(rs_grid* world, u32 x_cell, u32 y_cell, u32 frame_num) {
 
-    // Assume `terrain` is filled with height data from the Diamond-Square algorithm
+    u8 alpha = 255;
 
-    // Define the light source's position in 3D space (e.g., above and to the left of the terrain)
-    float lightX = -50.0f;
-    float lightY = -50.0f;
-    float lightZ = 200.0f;
+    Color deep_water_color    = { 20, 50, 250, alpha };
+    Color shallow_water_color = { 20, 130, 200, alpha };
+    Color lo_land_color       = { 20, 200, 130, alpha };
+    Color hi_land_color       = { 200, 200, 50, alpha };
+    Color ice_land_color      = { 200, 200, 200, alpha };
 
-    // Calculate lighting
-    calculateLighting(terrain, lighting, WIDTH, HEIGHT, lightX, lightY, lightZ);
+    u32 pixel_num = x_cell + y_cell * world->width;
 
-    // Example: Print the generated lighting values
-    for (int y = 0; y < HEIGHT; y++) {
-        for (int x = 0; x < WIDTH; x++) {
-            printf("Lighting at (%d, %d): %f\n", x, y, lighting[y * WIDTH + x]);
-        }
+    float map_val = rs_grid_get(world, x_cell, y_cell);//world->data[x_cell + y_cell*world->width];
+    
+    if (map_val <= 100) {
+        return (Color) { 0, 0, (u8)((pixel_num+frame_num)%128), 255 };
     }
-
-    return 0;
+    else if(map_val <= 110) {
+        return BLUE;
+    }
+    else if(map_val <= 135) {
+        return lo_land_color;
+    }
+    else if(map_val <= 140) {
+        return hi_land_color;
+    }
+    
+    return ice_land_color;
 }
-*/
+
+Color calc_lit_color(Color c, float intensity) {
+    float brightness = rs_remap(intensity, 0.0, 1.0, -1.0, 1.0);
+    return ColorBrightness(c, brightness);
+}
