@@ -2,14 +2,19 @@
 #include <stdlib.h>
 #include <math.h>
 
+#include <GL/glew.h>
+#include <GL/gl.h>
+#include <string.h>
+
 #include "raylib.h"
+#include "rlgl.h"
 
 #include "rs.h"
 
 #define WIDTH                           1500
 #define HEIGHT                           700
 #define PIXEL_SIZE                         1
-#define FPS                               60
+#define FPS                              200
 #define WORLD_WIDTH              ((1<<11)+1)
 #define WORLD_HEIGHT             ((1<<11)+1)
 #define WORLD_CENTER_X     (((1<<11)+1)/2.0)
@@ -19,6 +24,20 @@ typedef struct {
     Vector2 ul;
     Vector2 lr;
 } bb;
+
+typedef struct {
+    Vector2 position;
+    Vector2 velocity;
+    Vector2 acceleration;
+    Vector2 mass;
+} particle;
+
+typedef struct {
+    float G;
+    int num_particles;
+} scene_info;
+
+#define MAX_PARTICLES 1000
 
 float min(float a, float b, float c, float d) {
     float m = a;
@@ -49,6 +68,15 @@ void calc_world_bb(bb* dst, Camera2D camera) {
 
 int main() {
 
+    /**
+    int maxWorkGroupSize[3] = { 0 };
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0, &maxWorkGroupSize[0]);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1, &maxWorkGroupSize[1]);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2, &maxWorkGroupSize[2]);
+    **/
+
+    //printf("Max Work Group Size: X=%d, Y=%d, Z=%d\n", maxWorkGroupSize[0], maxWorkGroupSize[1], maxWorkGroupSize[2]);
+
     // this seed looks nice
     int t = 1723874298;//time(NULL);
     srand(t);
@@ -66,14 +94,66 @@ int main() {
     InitWindow(WIDTH, HEIGHT, "RS");
     SetTargetFPS(FPS);
 
-    Rectangle player = { WIDTH/2.0, HEIGHT/2.0, 20, 20 };
+    Rectangle player = { 0, 0, 20, 20 };
     Camera2D camera = { 0 };
     camera.target = (Vector2){ player.x + player.width/2.0, player.y + player.height/2.0 };
     camera.offset = (Vector2){ WIDTH/2.0, HEIGHT/2.0 };
+    /*camera.target = (Vector2){ 0, 0 };*/
+    /*camera.offset = (Vector2){ 0, 0 };*/
     camera.rotation = 0.0f;
-    camera.zoom = 100.0f;
+    camera.zoom = 2.0f;
+
+    char *compute_forces_code = LoadFileText("resources/compute_forces.glsl");
+    unsigned int compute_forces_shader = rlCompileShader(compute_forces_code, RL_COMPUTE_SHADER);
+    unsigned int compute_forces_program = rlLoadComputeShaderProgram(compute_forces_shader);
+    UnloadFileText(compute_forces_code);
+
+    particle* src_particles = malloc(MAX_PARTICLES * sizeof(particle));
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        src_particles[i].position = (Vector2) { GetRandomValue(-50, 50), GetRandomValue(-50, 50) };
+        src_particles[i].velocity = (Vector2) { 0, 0 };
+        src_particles[i].acceleration = (Vector2) { 0, 0 };
+        src_particles[i].mass = (Vector2) { 1.0, 0 };
+        /*src_particles[i].force = (Vector2) { 0, 0 };*/
+    }
+
+    particle* dst_particles = malloc(MAX_PARTICLES * sizeof(particle));
+    memcpy(dst_particles, src_particles, sizeof(particle) * MAX_PARTICLES);
+
+    scene_info info = { 0.0081f, MAX_PARTICLES };
+
+    unsigned int ssboA = rlLoadShaderBuffer(sizeof(particle) * MAX_PARTICLES, src_particles, RL_DYNAMIC_COPY);
+    unsigned int ssboB = rlLoadShaderBuffer(sizeof(particle) * MAX_PARTICLES, dst_particles, RL_DYNAMIC_COPY);
+    unsigned int info_buffer = rlLoadShaderBuffer(sizeof(scene_info), &info, RL_DYNAMIC_COPY);
 
     while (!WindowShouldClose()) {
+
+
+        /*
+        for(int i = 0; i < info.num_particles; i++) {
+            Vector2 force = (Vector2) { 0, 0 };
+            particles[i].force = force;
+            for (int j = 0; j < info.num_particles; j++) {
+                if (i != j) {
+                    Vector2 r;
+                    r.x = particles[i].position.x - particles[j].position.x;
+                    r.y = particles[i].position.y - particles[j].position.y;
+                    float dist = sqrtf(r.x * r.x + r.y * r.y);
+                    Vector2 dir;
+                    dir.x = r.x / dist;
+                    dir.y = r.y / dist;
+                    if (dist != 0) {
+                        float F = info.G * (particles[i].mass * particles[j].mass) / (dist * dist);
+                        force.x += F * dir.x;
+                        force.y += F * dir.y;
+                    }
+                }
+            }
+            particles[i].position.x += force.x;
+            particles[i].position.y += force.y;
+        }
+        */
+
 
         if (IsKeyDown(KEY_RIGHT)) {
             player.x += 2;
@@ -118,7 +198,7 @@ int main() {
         ClearBackground(RAYWHITE);
         
         BeginMode2D(camera);
-            
+           /* 
             calc_world_bb(&visible_world, camera);
 
             int x0 = (int)floor((double)visible_world.ul.x);
@@ -149,11 +229,16 @@ int main() {
                 }
             }
 
-            /*DrawRectangle(-6000, 320, 13000, 8000, DARKGRAY);*/
+            //DrawRectangle(-6000, 320, 13000, 8000, DARKGRAY);//
             DrawRectangleRec(player, RED);
+        */
 
             DrawLine((int)camera.target.x, -HEIGHT*10, (int)camera.target.x, HEIGHT*10, GREEN);
             DrawLine(-WIDTH*10, (int)camera.target.y, HEIGHT*10, (int)camera.target.y, GREEN);
+
+            for (int i = 0; i < MAX_PARTICLES; i++) {
+                DrawCircleV((Vector2){ src_particles[i].position.x, src_particles[i].position.y }, 2, RED);
+            }
 
         EndMode2D();
 
@@ -175,8 +260,28 @@ int main() {
 
         EndDrawing();
 
+        rlUpdateShaderBuffer(ssboA, src_particles, MAX_PARTICLES * sizeof(particle), 0);
+        rlUpdateShaderBuffer(info_buffer, &info, sizeof(scene_info), 0);
 
+        rlEnableShader(compute_forces_program);
+        rlBindShaderBuffer(ssboA, 1);
+        rlBindShaderBuffer(ssboB, 2);
+        rlBindShaderBuffer(info_buffer, 3);
+        rlComputeShaderDispatch(MAX_PARTICLES, 1, 1);
+        rlDisableShader();
+
+        rlReadShaderBuffer(ssboB, src_particles, sizeof(particle) * MAX_PARTICLES, 0);
+        rlReadShaderBuffer(ssboA, dst_particles, sizeof(particle) * MAX_PARTICLES, 0);
+
+        unsigned int tmp = ssboA;
+        ssboA = ssboB;
+        ssboB = tmp;
     }
+
+    rlUnloadShaderBuffer(ssboA);
+    rlUnloadShaderBuffer(ssboB);
+    rlUnloadShaderBuffer(info_buffer);
+    rlUnloadShaderProgram(compute_forces_program);
 
     CloseWindow();
     return 0;
