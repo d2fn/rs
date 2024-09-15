@@ -1,6 +1,6 @@
 #version 430
 
-#define KE 8.99
+#define KE 0.0899
 
 struct particle {
     vec2 position;

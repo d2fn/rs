@@ -1,10 +1,10 @@
 #version 430
 
 #define EPSILON 0.5
+#define MAX_SEARCH_DISTANCE 50
 #define TIME_STEP 1.0
 
-
-layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout (local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
 struct particle {
     vec2 position;
@@ -51,29 +51,11 @@ void main() {
                 vec2 r = left.position - right.position;
                 // vec2 r = right.position - left.position;
                 float dist = sqrt(r.x*r.x + r.y*r.y);
-                if (dist > EPSILON) {
+                if (dist > EPSILON && dist < MAX_SEARCH_DISTANCE) {
                     vec2 dir = r / dist;
                     // vec2 dir = normalize(r);
                     float F = info.G * (left.m.x * right.m.x) / (dist * dist);
-                    force += F * r / dist;// - 0.0001 * dir / (dist * dist);
-                    // force -= 0.001 * (0.01 / (left.m.x + right.m.x)) * (1/dist) * dir;
-
-                    // vec2 repulsion = -info.G * dir / (dist * dist);
-                    // vec2 attraction = -1e-8f * (0.01 / (left.m.x + right.m.x)) * (1 / dist) * dir;
-                    // force = repulsion - attraction;
-
-                    // float fx = F * r.x / dist;
-                    // float fy = F * r.y / dist;
-                    // force.x += fx;
-                    // force.y += fy;
-
-                    /**
-                    r = left.position - vec2(0,0);
-                    dist = distance(r, vec2(0,0));
-                    dir = r / dist;
-                    F = info.G * (left.m.x * 100) / (dist * dist);
-                    force += F * dir;
-                    **/
+                    force += F * r / dist;
                 }
             }
         }
@@ -98,13 +80,5 @@ void main() {
         dst[i].v = left.v + (TIME_STEP * left.a) - info.drag * left.v;
         dst[i].a = a;
         dst[i].m.x = left.m.x;
-
-        // vec2 a = force / (left.m.x);
-        /*
-        dst[i].position = new_position;
-        dst[i].v = (1.0 - info.drag) * (left.v + left.a);
-        dst[i].a = a;
-        dst[i].m.x = left.m.x;
-        */
     }
 }

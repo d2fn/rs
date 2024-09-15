@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 
 #include <GL/glew.h>
 #include <GL/gl.h>
@@ -8,6 +9,9 @@
 
 #include "raylib.h"
 #include "rlgl.h"
+
+#define GUI_RS_IMPLEMENTATION
+#include "gui_rs.h"
 
 // raygui
 #define RAYGUI_IMPLEMENTATION
@@ -35,8 +39,10 @@
 #define COLOR_MODE_LIGHT                 (1)
 
 #define COLOR_TYPE_BW                    (0)
-#define COLOR_TYPE_COLOR                 (1)
-#define COLOR_TYPE_HALFTONE              (2)
+#define COLOR_TYPE_GRAYSCALE             (1)
+#define COLOR_TYPE_COLOR                 (2)
+#define COLOR_TYPE_HALFTONE              (3)
+#define COLOR_TYPE_FIELD                 (4)
 
 typedef struct {
     Vector2 ul;
@@ -63,6 +69,11 @@ typedef struct {
     int num_fixed_particles;
 } state;
 
+typedef struct {
+    int force_calculation_millis;
+    int render_millis;
+} perf_stats;
+
 #define MAX_PARTICLES 50000
 
 Rectangle player = { 0, 0, 20, 20 };
@@ -73,7 +84,6 @@ particle* fixed_particles;
 Vector2* positions;
 particle* dst_particles;
 Image targetImage;
-int generating_points = 0;
 
 unsigned int compute_forces_program;
 unsigned int ssboA;
@@ -81,17 +91,10 @@ unsigned int ssboB;
 unsigned int ssboF;
 unsigned int info_buffer;
 
-//
-// layout_name: controls initialization
-//----------------------------------------------------------------------------------
-float GravitySliderValue = GRAVITY;
-float DragSliderValue = 0.01f;
-int ColorMode = 0;
-int ColorType = 0;
-float ParticleScaleSliderValue = 0.03f;
-float ReplicationRateSliderValue = 0.0f;
-bool ShouldReplicate = false;
-//----------------------------------------------------------------------------------
+int show_gui = 0;
+GuiRsState gui_state;
+
+perf_stats stats = { 0, 0 };
 
 float min(float a, float b, float c, float d) {
     float m = a;
@@ -131,10 +134,28 @@ Color sample_color(const Image image, Vector2 world) {
     return c;
 }
 
+Color get_particle_color(particle p) {
+    Color c;
+    if (gui_state.ColorType == COLOR_TYPE_BW) {
+        c = (gui_state.ColorMode == COLOR_MODE_DARK) ? WHITE : BLACK;
+    }
+    else if (gui_state.ColorType == COLOR_TYPE_GRAYSCALE) {
+        c = sample_color(targetImage, p.position);
+        int b = (int)round(255*brightness(c));
+        c = (Color) {b,b,b,255};
+        /*c = (gui_state.ColorMode == COLOR_MODE_DARK) ? BLUE : RED;*/
+    }
+    else {
+        c = sample_color(targetImage, p.position);
+    }
+
+    return c;
+}
+
 float compute_charge_mass_at_point(const Image image, Vector2 world) {
     Color c = sample_color(image, world);
     float b = brightness(c);
-    if (ColorMode == COLOR_MODE_LIGHT) {
+    if (gui_state.ColorMode == COLOR_MODE_LIGHT) {
         b = 1.0 - b;
     }
     return rs_remap(b, 0.0, 1.0, MASS_LO, MASS_HI);
@@ -144,7 +165,7 @@ void setup_camera() {
     camera.target = (Vector2){ player.x, player.y };
     camera.offset = (Vector2){ WIDTH/2.0, HEIGHT/2.0 };
     camera.rotation = 0.0f;
-    camera.zoom = 1.0f;
+    camera.zoom = 5.0f;
 }
 
 void add_particle(Vector2 worldPosition) {
@@ -189,34 +210,16 @@ void process_input() {
         camera.rotation++;
     }
 
-    if (IsKeyDown(KEY_SPACE)) {
-        generating_points = !generating_points;
+    if (IsKeyPressed(KEY_E)) {
+        show_gui = !show_gui;
     }
 
-    if (IsMouseButtonDown(0) || generating_points) {
+    if (IsMouseButtonDown(0)) {
         Vector2 mousePosition = (Vector2) { GetMouseX(), GetMouseY() };
         if (mousePosition.x > 300) {
             Vector2 worldPosition = GetScreenToWorld2D(mousePosition, camera);
             add_particle(worldPosition);
         }
-        /**
-        if (Vector2Distance(worldPosition, (Vector2){0,0}) < 325) {
-            int i = info.num_particles;
-            if (i < MAX_PARTICLES) {
-                Vector2 p = (Vector2) { worldPosition.x + GetRandomValue(-5, 5), worldPosition.y + GetRandomValue(-5, 5) };
-                float gamma = compute_charge_mass_at_point(targetImage, src_particles[i].position);
-                if (gamma > 0) {
-                    src_particles[i].position = p;
-                    src_particles[i].mass.x = gamma;
-                    src_particles[i].velocity = (Vector2) { 0, 0 };
-                    src_particles[i].acceleration = (Vector2) { 0, 0 };
-                    src_particles[i].mass.x = gamma;
-                    info.num_particles++;
-                    if (info.num_particles > MAX_PARTICLES) info.num_particles = MAX_PARTICLES;
-                }
-            }
-        }
-        **/
     }
 
     if (camera.rotation >  40) camera.rotation =  40;
@@ -235,6 +238,11 @@ void process_input() {
 }
 
 void compute_particle_forces() {
+
+    for (int i = 0; i < info.num_particles; i++) {
+        particle p = src_particles[i];
+        src_particles[i].mass.x = compute_charge_mass_at_point(targetImage, src_particles[i].position);
+    }
 
     rlUpdateShaderBuffer(ssboA, src_particles, MAX_PARTICLES * sizeof(particle), 0);
     rlUpdateShaderBuffer(info_buffer, &info, sizeof(state), 0);
@@ -264,12 +272,39 @@ void replicate_particles(int n) {
 
 void process_updates() {
     compute_particle_forces();
-    if (ShouldReplicate) {
-        replicate_particles((int)round(ReplicationRateSliderValue));
+    if (info.num_particles > 0) {
+        replicate_particles((int)round(gui_state.ReplicationRateSliderValue));
     }
 }
 
-void render_particles() {
+void show_debug_info() {
+    
+
+    DrawRectangle( 23, 400, 362, 220, Fade(SKYBLUE, 0.5f));
+    DrawRectangleLines( 23, 400, 362, 220, BLUE);
+
+    char buffer[128];
+    sprintf(buffer, "           Gravity = %.10f", gui_state.GravitySliderValue);
+    DrawText(buffer, 30, 420, 10, BLACK);
+    sprintf(buffer, "              Drag = %.10f", gui_state.DragSliderValue);
+    DrawText(buffer, 30, 440, 10, BLACK);
+    sprintf(buffer, "         ColorMode = %d", gui_state.ColorMode);
+    DrawText(buffer, 30, 460, 10, BLACK);
+    sprintf(buffer, "         ColorType = %d", gui_state.ColorType);
+    DrawText(buffer, 30, 480, 10, BLACK);
+    sprintf(buffer, "    Particle Scale = %.10f", gui_state.ParticleScaleSliderValue);
+    DrawText(buffer, 30, 500, 10, BLACK);
+    sprintf(buffer, "  Replication Rate = %d", (int)round(gui_state.ReplicationRateSliderValue));
+    DrawText(buffer, 30, 520, 10, BLACK);
+    sprintf(buffer, "    Particle Count = %d/%d", info.num_particles, MAX_PARTICLES);
+    DrawText(buffer, 30, 540, 10, BLACK);
+    sprintf(buffer, " Force Calculation (ms) = %d", stats.force_calculation_millis);
+    DrawText(buffer, 30, 560, 10, BLACK);
+    sprintf(buffer, "         Rendering (ms) = %d", stats.render_millis);
+    DrawText(buffer, 30, 580, 10, BLACK);
+
+    DrawFPS(30, GetScreenHeight() - 100);
+
 }
 
 int main() {
@@ -277,12 +312,19 @@ int main() {
     InitWindow(WIDTH, HEIGHT, "RS");
     SetTargetFPS(FPS);
 
+    gui_state = InitGuiRs();
+
     setup_camera();
 
     char *compute_forces_code = LoadFileText("resources/compute_forces.glsl");
     unsigned int compute_forces_shader = rlCompileShader(compute_forces_code, RL_COMPUTE_SHADER);
     compute_forces_program = rlLoadComputeShaderProgram(compute_forces_shader);
     UnloadFileText(compute_forces_code);
+
+
+    Shader particleShader = LoadShader(0, "resources/circle_fs.glsl");
+    int psParticleLoc = GetShaderLocation(particleShader, "particles");
+    int psInfoLoc = GetShaderLocation(particleShader, "info");
 
     src_particles = malloc(MAX_PARTICLES * sizeof(particle));
     dst_particles = malloc(MAX_PARTICLES * sizeof(particle));
@@ -314,7 +356,9 @@ int main() {
     Texture whiteTex = LoadTextureFromImage(whiteImage);
     UnloadImage(whiteImage);
 
-    targetImage = LoadImage("resources/Rape_of_Prosepina.png");
+    /*targetImage = LoadImage("resources/Rape_of_Prosepina.png");*/
+    /*targetImage = LoadImage("resources/pictures/dg_sunset.png");*/
+    targetImage = LoadImage("resources/pictures/lindell.png");
     /*gammaField = LoadImage("resources/gl.png");*/
 
     GuiLoadStyle("resources/styles/jungle/style_jungle.rgs");
@@ -323,93 +367,86 @@ int main() {
 
         process_input();
 
+
+        clock_t render_start = clock();
         BeginDrawing();
 
-        if (ColorMode == COLOR_MODE_DARK) {
+        if (gui_state.ColorMode == COLOR_MODE_DARK) {
             ClearBackground(BLACK);
         }
         else {
             ClearBackground(WHITE);
         }
 
-        /*
-        Matrix view = MatrixInvert(GetCameraMatrix2D(camera));
-        SetShaderValueMatrix(electric_field_shader, GetShaderLocation(electric_field_shader, "view"), view);
-        SetShaderValue(electric_field_shader, GetShaderLocation(electric_field_shader, "numParticles"), &info.num_particles, SHADER_UNIFORM_INT);
-
-        rlEnableShader(electric_field_shader.id);
-        rlBindShaderBuffer(ssboA, 1);
-        rlDisableShader();
-
-        BeginShaderMode(electric_field_shader);
+        if (gui_state.ColorType == COLOR_TYPE_FIELD) {
+            Matrix view = MatrixInvert(GetCameraMatrix2D(camera));
+            SetShaderValueMatrix(particleShader, GetShaderLocation(particleShader, "view"), view);
+            rlEnableShader(particleShader.id);
+            rlBindShaderBuffer(ssboA, 1);
+            rlBindShaderBuffer(info_buffer, 2);
+            rlDisableShader();
+            BeginShaderMode(particleShader);
             DrawRectangle(0, 0, WIDTH, HEIGHT, BLANK);
-        EndShaderMode();
-        */
+            EndShaderMode();
 
-        /*for(int i = 0; i < 100; i++) {*/
-        /*}*/
-
-        BeginMode2D(camera);
-        for (int i = 0; i < info.num_particles; i++) {
-            particle p = src_particles[i];
-            src_particles[i].mass.x = compute_charge_mass_at_point(targetImage, p.position);
             /*
-            Vector2 v = src_particles[i].velocity;
-            float speed = sqrtf(v.x*v.x+v.y*v.y);
-            float cspeed = rs_remap(speed, 0, 0.2, 0, 255);
-            if (cspeed > 255) cspeed = 255;
+            SetShaderValueMatrix(electric_field_shader, GetShaderLocation(electric_field_shader, "view"), view);
+            SetShaderValue(electric_field_shader, GetShaderLocation(electric_field_shader, "numParticles"), &info.num_particles, SHADER_UNIFORM_INT);
+
+            rlEnableShader(electric_field_shader.id);
+            rlBindShaderBuffer(ssboA, 1);
+            rlDisableShader();
+
+            BeginShaderMode(electric_field_shader);
+                DrawRectangle(0, 0, WIDTH, HEIGHT, BLANK);
+            EndShaderMode();
             */
-            Color c;
-            if (ColorType == COLOR_TYPE_BW) {
-                c = (ColorMode == COLOR_MODE_DARK) ? WHITE : BLACK;
+        }
+        else {
+
+            if (gui_state.ParticleScaleSliderValue < 0.0001) {
+                for (int i = 0; i < info.num_particles; i++) {
+                    particle p = src_particles[i];
+                    Color c = get_particle_color(p);
+                    /*Vector2 screen = GetWorldToScreen2D(p.position, camera);*/
+                    DrawPixelV(p.position, c);
+                }
             }
             else {
-                c = sample_color(targetImage, p.position);
+                BeginMode2D(camera);
+                for (int i = 0; i < info.num_particles; i++) {
+                    particle p = src_particles[i];
+                    Color c = get_particle_color(p);
+                    float r = gui_state.ParticleScaleSliderValue * p.mass.x;
+                    DrawCircleV(p.position, r, c);
+                }
+                EndMode2D();
             }
-            /*float r = sqrtf(ParticleScaleSliderValue * p.mass.x/PI);*/
-            float r = ParticleScaleSliderValue * p.mass.x;
-            /*p.mass.x = brightness(c);*/
-            /*float r = p.mass.x / 10;*/
-            /*float r = 1;*/
-            DrawCircleV(p.position, r, c);
         }
-        EndMode2D();
-        
 
-        /*DrawRectangle( 10, 10, 250, 150, Fade(SKYBLUE, 0.5f));*/
-        /*DrawRectangleLines( 10, 10, 250, 150, BLUE);*/
-        /**/
-        /*DrawText("Free 2d camera controls:", 20, 20, 10, BLACK);*/
-        /*DrawText("- Right/Left to move Offset", 40, 40, 10, DARKGRAY);*/
-        /*DrawText("- Mouse Wheel to Zoom in-out", 40, 60, 10, DARKGRAY);*/
-        /*DrawText("- A / S to Rotate", 40, 80, 10, DARKGRAY);*/
-        /*DrawText("- R to reset Zoom and Rotation", 40, 100, 10, DARKGRAY);*/
-        /*char particle_msg[100];*/
-        /*sprintf(particle_msg, "- Click and drag to add particles (%d)", info.num_particles);*/
-        /*DrawText(particle_msg, 40, 120, 10, DARKGRAY);*/
-        //
-        // raygui: controls drawing
-        //----------------------------------------------------------------------------------
-        GuiGroupBox((Rectangle){ 24, 24, 304, 184 }, "Physics");
-        GuiSliderBar((Rectangle){ 104, 48, 208, 24 }, "Gravity", NULL, &GravitySliderValue, 1e-6f, 1e-2f);
-        GuiSliderBar((Rectangle){ 104, 80, 208, 24 }, "Drag", NULL, &DragSliderValue, 0.0f, 0.2f);
-        GuiToggle((Rectangle){ 40, 128, 272, 24 }, "Start Replicating", &ShouldReplicate);
-        GuiSliderBar((Rectangle){ 152, 160, 160, 24 }, "Replication Rate", NULL, &ReplicationRateSliderValue, 1, 10);
+        if (show_gui) {
+            if (GuiRs(&gui_state) == 1) {
+                memset(src_particles, 0, MAX_PARTICLES * sizeof(particle));
+                info.num_particles = 0;
+            }
+            show_debug_info();
+        }
+        clock_t render_end = clock();
 
-        GuiGroupBox((Rectangle){ 24, 232, 304, 152 }, "Theme");
-        GuiToggleGroup((Rectangle){ 40, 256, 136, 24 }, "Dark;Light", &ColorMode);
-        GuiToggleGroup((Rectangle){ 40, 296, 88, 24 }, "B&W;Color;Halftone", &ColorType);
-        GuiSliderBar((Rectangle){ 80, 336, 232, 24 }, "Scale", NULL, &ParticleScaleSliderValue, 0.02, 0.1f);
-        //----------------------------------------------------------------------------------
+        stats.render_millis = ((double)(render_end - render_start)) / CLOCKS_PER_SEC * 1000;
 
-        info.G = GravitySliderValue;
-        info.drag = DragSliderValue;
+        info.G = gui_state.GravitySliderValue;
+        info.drag = gui_state.DragSliderValue;
 
         //----------------------------------------------------------------------------------
 
         EndDrawing();
 
+        clock_t update_start = clock();
         process_updates();
+        clock_t update_end = clock();
+
+        stats.force_calculation_millis = ((double)(update_end - update_start)) / CLOCKS_PER_SEC * 1000;
     }
 
     rlUnloadShaderBuffer(ssboA);
