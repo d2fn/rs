@@ -1,10 +1,11 @@
 # Define the compiler and flags
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 --debug -g
-LDFLAGS = -lraylib -lGL  -lm -lpthread -ldl -lrt -lX11
+CFLAGS = -Wall -Wextra -std=c99 --debug -g -I/usr/include -I/usr/include/GL
+LDFLAGS = -lraylib -lGL -lGLEW -lglfw -lm -lpthread -ldl -lrt -lX11
 
 # Define the source files and output executable
 SRCS = main.c rs.c rs_perlin.c
+#SRCS = gameoflife.c rs.c rs_perlin.c
 OBJS = $(SRCS:.c=.o)
 TARGET = rs
 
