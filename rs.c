@@ -15,7 +15,7 @@ float rand_range(float range) {
     return ((float)rand() / RAND_MAX) * 2 * range - range;
 }
 
-int index(int x, int y, int size) {
+int rs_index(int x, int y, int size) {
     return ( y * size ) + x;
 }
 
@@ -202,10 +202,10 @@ void rs_grid_set(rs_grid* g, u32 x, u32 y, float value) {
 
 void diamond_square(float* map, int size, float roughness) {
 
-    map[index(0, 0, size)]
-        = map[index(0, size-1, size)]
-        = map[index(size-1, 0, size)]
-        = map[index(size-1, size-1, size)]
+    map[rs_index(0, 0, size)]
+        = map[rs_index(0, size-1, size)]
+        = map[rs_index(size-1, 0, size)]
+        = map[rs_index(size-1, size-1, size)]
         = rand() % 256;
 
     int step = size - 1;
@@ -218,11 +218,11 @@ void diamond_square(float* map, int size, float roughness) {
                 int mid_x = x + half_step;
                 int mid_y = y + half_step;
                 // Calculate the average of the corners
-                float avg = (map[index(x, y,        size)]  + map[index(x + step, y,        size)] +
-                             map[index(x, y + step, size)]  + map[index(x + step, y + step, size)]) / 4.0f;
+                float avg = (map[rs_index(x, y,        size)]  + map[rs_index(x + step, y,        size)] +
+                             map[rs_index(x, y + step, size)]  + map[rs_index(x + step, y + step, size)]) / 4.0f;
 
                 // Set the midpoint with a random offset
-                map[index(mid_x, mid_y, size)] = avg + rand_range(roughness);
+                map[rs_index(mid_x, mid_y, size)] = avg + rand_range(roughness);
             }
         }
 
@@ -237,26 +237,26 @@ void diamond_square(float* map, int size, float roughness) {
                 int count = 0;
 
                 if (mid_x >= half_step) { // Left neighbor
-                    avg += map[index(mid_x - half_step, mid_y, size)];
+                    avg += map[rs_index(mid_x - half_step, mid_y, size)];
                     count++;
                 }
                 if (mid_x + half_step < size) { // Right neighbor
-                    avg += map[index(mid_x + half_step, mid_y, size)];
+                    avg += map[rs_index(mid_x + half_step, mid_y, size)];
                     count++;
                 }
                 if (mid_y >= half_step) { // Top neighbor
-                    avg += map[index(mid_x, mid_y - half_step, size)];
+                    avg += map[rs_index(mid_x, mid_y - half_step, size)];
                     count++;
                 }
                 if (mid_y + half_step < size) { // Bottom neighbor
-                    avg += map[index(mid_x, mid_y + half_step, size)];
+                    avg += map[rs_index(mid_x, mid_y + half_step, size)];
                     count++;
                 }
 
                 avg /= count;
 
                 // Set the midpoint with a random offset
-                map[index(mid_x, mid_y, size)] = avg + rand_range(roughness);
+                map[rs_index(mid_x, mid_y, size)] = avg + rand_range(roughness);
             }
         }
 
